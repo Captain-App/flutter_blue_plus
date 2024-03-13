@@ -1,0 +1,4 @@
+# melos_managed_dependency_overrides: flutter_blue_plus
+dependency_overrides:
+  flutter_blue_plus:
+    path: ..
