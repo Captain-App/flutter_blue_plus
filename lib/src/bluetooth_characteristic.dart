@@ -1,6 +1,7 @@
 // Copyright 2017-2023, Charles Weinberger & Paul DeMarco.
 // All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
+// cspell: disable
 
 part of flutter_blue_plus;
 
@@ -22,7 +23,8 @@ class BluetoothCharacteristic {
   BluetoothCharacteristic.fromProto(BmBluetoothCharacteristic p)
       : remoteId = DeviceIdentifier(p.remoteId.toString()),
         serviceUuid = p.serviceUuid,
-        secondaryServiceUuid = p.secondaryServiceUuid != null ? p.secondaryServiceUuid! : null,
+        secondaryServiceUuid =
+            p.secondaryServiceUuid != null ? p.secondaryServiceUuid! : null,
         characteristicUuid = p.characteristicUuid;
 
   /// convenience accessor
@@ -33,12 +35,18 @@ class BluetoothCharacteristic {
 
   /// Get Properties from known services
   CharacteristicProperties get properties {
-    return _bmchr != null ? CharacteristicProperties.fromProto(_bmchr!.properties) : CharacteristicProperties();
+    return _bmchr != null
+        ? CharacteristicProperties.fromProto(_bmchr!.properties)
+        : CharacteristicProperties();
   }
 
   /// Get Descriptors from known services
   List<BluetoothDescriptor> get descriptors {
-    return _bmchr != null ? _bmchr!.descriptors.map((d) => BluetoothDescriptor.fromProto(d)).toList() : [];
+    return _bmchr != null
+        ? _bmchr!.descriptors
+            .map((d) => BluetoothDescriptor.fromProto(d))
+            .toList()
+        : [];
   }
 
   /// this variable is updated:
@@ -56,7 +64,11 @@ class BluetoothCharacteristic {
   ///   - anytime a notification arrives (if subscribed)
   ///   - and when first listened to, it re-emits the last value for convenience
   Stream<List<int>> get lastValueStream => FlutterBluePlus._methodStream.stream
-      .where((m) => m.method == "OnCharacteristicReceived" || m.method == "OnCharacteristicWritten")
+      .where(
+        (m) =>
+            m.method == "OnCharacteristicReceived" ||
+            m.method == "OnCharacteristicWritten",
+      )
       .map((m) => m.arguments)
       .map((args) => BmCharacteristicData.fromMap(args))
       .where((p) => p.remoteId == remoteId.toString())
@@ -82,12 +94,14 @@ class BluetoothCharacteristic {
   /// return true if we're subscribed to this characteristic
   ///   -  you can subscribe using setNotifyValue(true)
   bool get isNotifying {
-    var cccd = descriptors._firstWhereOrNull((d) => d.descriptorUuid == cccdUuid);
+    var cccd =
+        descriptors._firstWhereOrNull((d) => d.descriptorUuid == cccdUuid);
     if (cccd == null) {
       return false;
     }
     var hasNotify = cccd.lastValue.isNotEmpty && (cccd.lastValue[0] & 0x01) > 0;
-    var hasIndicate = cccd.lastValue.isNotEmpty && (cccd.lastValue[0] & 0x02) > 0;
+    var hasIndicate =
+        cccd.lastValue.isNotEmpty && (cccd.lastValue[0] & 0x02) > 0;
     return hasNotify || hasIndicate;
   }
 
@@ -96,7 +110,11 @@ class BluetoothCharacteristic {
     // check connected
     if (device.isConnected == false) {
       throw FlutterBluePlusException(
-          ErrorPlatform.fbp, "readCharacteristic", FbpErrorCode.deviceIsDisconnected.index, "device is not connected");
+        ErrorPlatform.fbp,
+        "readCharacteristic",
+        FbpErrorCode.deviceIsDisconnected.index,
+        "device is not connected",
+      );
     }
 
     // Only allow a single ble operation to be underway at a time
@@ -126,7 +144,10 @@ class BluetoothCharacteristic {
       Future<BmCharacteristicData> futureResponse = responseStream.first;
 
       // invoke
-      await FlutterBluePlus._invokeMethod('readCharacteristic', request.toMap());
+      await FlutterBluePlus._invokeMethod(
+        'readCharacteristic',
+        request.toMap(),
+      );
 
       // wait for response
       BmCharacteristicData response = await futureResponse
@@ -136,7 +157,12 @@ class BluetoothCharacteristic {
 
       // failed?
       if (!response.success) {
-        throw FlutterBluePlusException(_nativeError, "readCharacteristic", response.errorCode, response.errorString);
+        throw FlutterBluePlusException(
+          _nativeError,
+          "readCharacteristic",
+          response.errorCode,
+          response.errorString,
+        );
       }
 
       // set return value
@@ -157,17 +183,27 @@ class BluetoothCharacteristic {
   ///         2. the peripheral device must support the 'long write' ble protocol.
   ///         3. Interrupted transfers can leave the characteristic in a partially written state
   ///         4. If the mtu is small, it is very very slow.
-  Future<void> write(List<int> value,
-      {bool withoutResponse = false, bool allowLongWrite = false, int timeout = 15}) async {
+  Future<void> write(
+    List<int> value, {
+    bool withoutResponse = false,
+    bool allowLongWrite = false,
+    int timeout = 15,
+  }) async {
     //  check args
     if (withoutResponse && allowLongWrite) {
-      throw ArgumentError("cannot longWrite withoutResponse, not allowed on iOS or Android");
+      throw ArgumentError(
+        "cannot longWrite withoutResponse, not allowed on iOS or Android",
+      );
     }
 
     // check connected
     if (device.isConnected == false) {
-      throw FlutterBluePlusException(ErrorPlatform.fbp, "writeCharacteristic", FbpErrorCode.deviceIsDisconnected.index,
-          "device is not connected");
+      throw FlutterBluePlusException(
+        ErrorPlatform.fbp,
+        "writeCharacteristic",
+        FbpErrorCode.deviceIsDisconnected.index,
+        "device is not connected",
+      );
     }
 
     // Only allow a single ble operation to be underway at a time
@@ -175,7 +211,9 @@ class BluetoothCharacteristic {
     await mtx.take();
 
     try {
-      final writeType = withoutResponse ? BmWriteType.withoutResponse : BmWriteType.withResponse;
+      final writeType = withoutResponse
+          ? BmWriteType.withoutResponse
+          : BmWriteType.withResponse;
 
       var request = BmWriteCharacteristicRequest(
         remoteId: remoteId.toString(),
@@ -199,7 +237,10 @@ class BluetoothCharacteristic {
       Future<BmCharacteristicData> futureResponse = responseStream.first;
 
       // invoke
-      await FlutterBluePlus._invokeMethod('writeCharacteristic', request.toMap());
+      await FlutterBluePlus._invokeMethod(
+        'writeCharacteristic',
+        request.toMap(),
+      );
 
       // wait for response so that we can:
       //  1. check for success (writeWithResponse)
@@ -211,7 +252,12 @@ class BluetoothCharacteristic {
 
       // failed?
       if (!response.success) {
-        throw FlutterBluePlusException(_nativeError, "writeCharacteristic", response.errorCode, response.errorString);
+        throw FlutterBluePlusException(
+          _nativeError,
+          "writeCharacteristic",
+          response.errorCode,
+          response.errorString,
+        );
       }
 
       return Future.value();
@@ -227,7 +273,11 @@ class BluetoothCharacteristic {
     // check connected
     if (device.isConnected == false) {
       throw FlutterBluePlusException(
-          ErrorPlatform.fbp, "setNotifyValue", FbpErrorCode.deviceIsDisconnected.index, "device is not connected");
+        ErrorPlatform.fbp,
+        "setNotifyValue",
+        FbpErrorCode.deviceIsDisconnected.index,
+        "device is not connected",
+      );
     }
 
     // Only allow a single ble operation to be underway at a time
@@ -245,7 +295,8 @@ class BluetoothCharacteristic {
 
       // Notifications & Indications are configured by writing to the
       // Client Characteristic Configuration Descriptor (CCCD)
-      Stream<BmDescriptorData> responseStream = FlutterBluePlus._methodStream.stream
+      Stream<BmDescriptorData> responseStream = FlutterBluePlus
+          ._methodStream.stream
           .where((m) => m.method == "OnDescriptorWritten")
           .map((m) => m.arguments)
           .map((args) => BmDescriptorData.fromMap(args))
@@ -258,7 +309,10 @@ class BluetoothCharacteristic {
       Future<BmDescriptorData> futureResponse = responseStream.first;
 
       // invoke
-      bool hasCCCD = await FlutterBluePlus._invokeMethod('setNotifyValue', request.toMap());
+      bool hasCCCD = await FlutterBluePlus._invokeMethod(
+        'setNotifyValue',
+        request.toMap(),
+      );
 
       // wait for CCCD descriptor to be written?
       if (hasCCCD) {
@@ -269,7 +323,12 @@ class BluetoothCharacteristic {
 
         // failed?
         if (!response.success) {
-          throw FlutterBluePlusException(_nativeError, "setNotifyValue", response.errorCode, response.errorString);
+          throw FlutterBluePlusException(
+            _nativeError,
+            "setNotifyValue",
+            response.errorCode,
+            response.errorString,
+          );
         }
       }
     } finally {
@@ -328,17 +387,18 @@ class CharacteristicProperties {
   final bool notifyEncryptionRequired;
   final bool indicateEncryptionRequired;
 
-  const CharacteristicProperties(
-      {this.broadcast = false,
-      this.read = false,
-      this.writeWithoutResponse = false,
-      this.write = false,
-      this.notify = false,
-      this.indicate = false,
-      this.authenticatedSignedWrites = false,
-      this.extendedProperties = false,
-      this.notifyEncryptionRequired = false,
-      this.indicateEncryptionRequired = false});
+  const CharacteristicProperties({
+    this.broadcast = false,
+    this.read = false,
+    this.writeWithoutResponse = false,
+    this.write = false,
+    this.notify = false,
+    this.indicate = false,
+    this.authenticatedSignedWrites = false,
+    this.extendedProperties = false,
+    this.notifyEncryptionRequired = false,
+    this.indicateEncryptionRequired = false,
+  });
 
   CharacteristicProperties.fromProto(BmCharacteristicProperties p)
       : broadcast = p.broadcast,

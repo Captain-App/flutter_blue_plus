@@ -2,6 +2,8 @@
 // All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
+// cspell: disable
+
 part of flutter_blue_plus;
 
 class FlutterBluePlus {
@@ -108,11 +110,13 @@ class FlutterBluePlus {
     } else {
       // start listening now so we do not miss any
       // changes while we get the initial value
-      var buffer = _BufferStream.listen(FlutterBluePlus._methodStream.stream
-          .where((m) => m.method == "OnAdapterStateChanged")
-          .map((m) => m.arguments)
-          .map((args) => BmBluetoothAdapterState.fromMap(args))
-          .map((s) => _bmToAdapterState(s.adapterState)));
+      var buffer = _BufferStream.listen(
+        FlutterBluePlus._methodStream.stream
+            .where((m) => m.method == "OnAdapterStateChanged")
+            .map((m) => m.arguments)
+            .map((args) => BmBluetoothAdapterState.fromMap(args))
+            .map((s) => _bmToAdapterState(s.adapterState)),
+      );
 
       // initial state
       BluetoothAdapterState initialValue =
@@ -134,9 +138,12 @@ class FlutterBluePlus {
   /// Retrieve a list of devices currently connected to your app
   static List<BluetoothDevice> get connectedDevices {
     var copy = Map<DeviceIdentifier, BmConnectionStateResponse>.from(
-        _connectionStates);
-    copy.removeWhere((key, value) =>
-        value.connectionState == BmConnectionStateEnum.disconnected);
+      _connectionStates,
+    );
+    copy.removeWhere(
+      (key, value) =>
+          value.connectionState == BmConnectionStateEnum.disconnected,
+    );
     return copy.values
         .map((v) => BluetoothDevice(remoteId: DeviceIdentifier(v.remoteId)))
         .toList();
@@ -178,7 +185,7 @@ class FlutterBluePlus {
   ///   - [timeout] calls stopScan after a specified duration
   ///   - [removeIfGone] if true, remove devices after they've stopped advertising for X duration
   ///   - [continuousUpdates] if true, 'lastSeen' & 'rssi' are continually updated. This takes more power.
-  ///   - [oneByOne] if true, we will stream every advertistment one by one, including duplicates.
+  ///   - [oneByOne] if true, we will stream every advertisement one by one, including duplicates.
   ///                If false, we deduplicate the advertisements, and return a list of devices.
   ///   - [androidScanMode] choose the android scan mode to use when scanning
   ///   - [androidUsesFineLocation] request ACCESS_FINE_LOCATION permission at runtime
@@ -195,8 +202,10 @@ class FlutterBluePlus {
     bool androidUsesFineLocation = false,
   }) async {
     // check args
-    assert(removeIfGone == null || continuousUpdates,
-        "removeIfGone requires continuousUpdates");
+    assert(
+      removeIfGone == null || continuousUpdates,
+      "removeIfGone requires continuousUpdates",
+    );
 
     // stop existing scan
     if (_isScanning.latestValue == true) {
@@ -207,13 +216,14 @@ class FlutterBluePlus {
     _isScanning.add(true);
 
     var settings = BmScanSettings(
-        withServices: withServices,
-        withRemoteIds: withRemoteIds,
-        withNames: withNames,
-        withKeywords: withKeywords,
-        continuousUpdates: continuousUpdates,
-        androidScanMode: androidScanMode.value,
-        androidUsesFineLocation: androidUsesFineLocation);
+      withServices: withServices,
+      withRemoteIds: withRemoteIds,
+      withNames: withNames,
+      withKeywords: withKeywords,
+      continuousUpdates: continuousUpdates,
+      androidScanMode: androidScanMode.value,
+      androidUsesFineLocation: androidUsesFineLocation,
+    );
 
     Stream<BmScanResponse> responseStream = FlutterBluePlus._methodStream.stream
         .where((m) => m.method == "OnScanResponse")
@@ -230,7 +240,8 @@ class FlutterBluePlus {
     // check every 250ms for gone devices?
     late Stream<BmScanResponse?> outputStream = removeIfGone != null
         ? _mergeStreams(
-            [_scanBuffer.stream, Stream.periodic(Duration(milliseconds: 250))])
+            [_scanBuffer.stream, Stream.periodic(Duration(milliseconds: 250))],
+          )
         : _scanBuffer.stream;
 
     // start by pushing an empty array
@@ -242,15 +253,20 @@ class FlutterBluePlus {
     _scanSubscription = outputStream.listen((BmScanResponse? response) {
       if (response == null) {
         // if null, this is just a periodic update to remove old results
-        if (output._removeWhere((elm) =>
-            DateTime.now().difference(elm.timeStamp) > removeIfGone!)) {
+        if (output._removeWhere(
+          (elm) => DateTime.now().difference(elm.timeStamp) > removeIfGone!,
+        )) {
           _scanResultsList.add(List.from(output)); // push to stream
         }
       } else {
         // failure?
         if (response.failed != null) {
-          throw FlutterBluePlusException(_nativeError, "scan",
-              response.failed!.errorCode, response.failed!.errorString);
+          throw FlutterBluePlusException(
+            _nativeError,
+            "scan",
+            response.failed!.errorCode,
+            response.failed!.errorString,
+          );
         }
 
         // convert
@@ -315,8 +331,12 @@ class FlutterBluePlus {
   static Future<PhySupport> getPhySupport() async {
     // check android
     if (Platform.isAndroid == false) {
-      throw FlutterBluePlusException(ErrorPlatform.fbp, "getPhySupport",
-          FbpErrorCode.androidOnly.index, "android-only");
+      throw FlutterBluePlusException(
+        ErrorPlatform.fbp,
+        "getPhySupport",
+        FbpErrorCode.androidOnly.index,
+        "android-only",
+      );
     }
 
     return await _invokeMethod('getPhySupport')
@@ -451,8 +471,10 @@ class FlutterBluePlus {
   }
 
   /// invoke a platform method
-  static Future<dynamic> _invokeMethod(String method,
-      [dynamic arguments]) async {
+  static Future<dynamic> _invokeMethod(
+    String method, [
+    dynamic arguments,
+  ]) async {
     // return value
     dynamic out;
 
@@ -709,7 +731,11 @@ class FlutterBluePlusException implements Exception {
   final String? description;
 
   FlutterBluePlusException(
-      this.platform, this.function, this.code, this.description);
+    this.platform,
+    this.function,
+    this.code,
+    this.description,
+  );
 
   @override
   String toString() {

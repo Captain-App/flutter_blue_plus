@@ -1,7 +1,9 @@
 part of flutter_blue_plus;
 
 String _hexEncode(List<int> numbers) {
-  return numbers.map((n) => (n & 0xFF).toRadixString(16).padLeft(2, '0')).join();
+  return numbers
+      .map((n) => (n & 0xFF).toRadixString(16).padLeft(2, '0'))
+      .join();
 }
 
 List<int> _hexDecode(String hex) {
@@ -54,13 +56,23 @@ extension AddOrUpdate<T> on List<T> {
 
 extension FutureTimeout<T> on Future<T> {
   Future<T> fbpTimeout(int seconds, String function) {
-    return this.timeout(Duration(seconds: seconds), onTimeout: () {
-      throw FlutterBluePlusException(
-          ErrorPlatform.fbp, function, FbpErrorCode.timeout.index, "Timed out after ${seconds}s");
-    });
+    return this.timeout(
+      Duration(seconds: seconds),
+      onTimeout: () {
+        throw FlutterBluePlusException(
+          ErrorPlatform.fbp,
+          function,
+          FbpErrorCode.timeout.index,
+          "Timed out after ${seconds}s",
+        );
+      },
+    );
   }
 
-  Future<T> fbpEnsureDeviceIsConnected(BluetoothDevice device, String function) {
+  Future<T> fbpEnsureDeviceIsConnected(
+    BluetoothDevice device,
+    String function,
+  ) {
     // Create a completer to represent the result of this extended Future.
     var completer = Completer<T>();
 
@@ -68,8 +80,14 @@ extension FutureTimeout<T> on Future<T> {
     var subscription = device.connectionState.listen((event) {
       if (event == BluetoothConnectionState.disconnected) {
         if (!completer.isCompleted) {
-          completer.completeError(FlutterBluePlusException(
-              ErrorPlatform.fbp, function, FbpErrorCode.deviceIsDisconnected.index, "Device is disconnected"));
+          completer.completeError(
+            FlutterBluePlusException(
+              ErrorPlatform.fbp,
+              function,
+              FbpErrorCode.deviceIsDisconnected.index,
+              "Device is disconnected",
+            ),
+          );
         }
       }
     });
@@ -97,10 +115,17 @@ extension FutureTimeout<T> on Future<T> {
 
     // disconnection listener.
     var subscription = FlutterBluePlus.adapterState.listen((event) {
-      if (event == BluetoothAdapterState.off || event == BluetoothAdapterState.turningOff) {
+      if (event == BluetoothAdapterState.off ||
+          event == BluetoothAdapterState.turningOff) {
         if (!completer.isCompleted) {
-          completer.completeError(FlutterBluePlusException(
-              ErrorPlatform.fbp, function, FbpErrorCode.adapterIsOff.index, "Bluetooth adapter is off"));
+          completer.completeError(
+            FlutterBluePlusException(
+              ErrorPlatform.fbp,
+              function,
+              FbpErrorCode.adapterIsOff.index,
+              "Bluetooth adapter is off",
+            ),
+          );
         }
       }
     });
@@ -132,7 +157,8 @@ class _StreamController<T> {
 
   final StreamController<T> _controller = StreamController<T>.broadcast();
 
-  _StreamController({required T initialValue}) : this.latestValue = initialValue;
+  _StreamController({required T initialValue})
+      : this.latestValue = initialValue;
 
   Stream<T> get stream {
     if (latestValue != null) {
@@ -149,9 +175,19 @@ class _StreamController<T> {
     _controller.add(newValue);
   }
 
-  void listen(Function(T) onData, {Function? onError, void Function()? onDone, bool? cancelOnError}) {
+  void listen(
+    Function(T) onData, {
+    Function? onError,
+    void Function()? onDone,
+    bool? cancelOnError,
+  }) {
     onData(latestValue);
-    _controller.stream.listen(onData, onError: onError, onDone: onDone, cancelOnError: cancelOnError);
+    _controller.stream.listen(
+      onData,
+      onError: onError,
+      onDone: onDone,
+      cancelOnError: cancelOnError,
+    );
   }
 
   Future<void> close() {
@@ -159,7 +195,7 @@ class _StreamController<T> {
   }
 }
 
-// imediately starts listening to a broadcast stream and
+// immediately starts listening to a broadcast stream and
 // buffering it in a new single-subscription stream
 class _BufferStream<T> {
   final Stream<T> _inputStream;
@@ -208,7 +244,8 @@ class _BufferStream<T> {
 }
 
 // Helper for 'newStreamWithInitialValue' method for streams.
-class _NewStreamWithInitialValueTransformer<T> extends StreamTransformerBase<T, T> {
+class _NewStreamWithInitialValueTransformer<T>
+    extends StreamTransformerBase<T, T> {
   final T initialValue;
 
   _NewStreamWithInitialValueTransformer(this.initialValue);
@@ -286,7 +323,8 @@ Stream<T> _mergeStreams<T>(List<Stream<T>> streams) {
   }
 
   void subscribeToStream(Stream<T> stream) {
-    final s = stream.listen(handleData, onError: handleError, onDone: handleDone);
+    final s =
+        stream.listen(handleData, onError: handleError, onDone: handleDone);
     subscriptions.add(s);
   }
 
@@ -323,7 +361,7 @@ class _Mutex {
   }
 }
 
-// Create mutexes in a parrallel-safe way,
+// Create mutexes in a parallel-safe way,
 class _MutexFactory {
   static final _Mutex _global = _Mutex();
   static final Map<String, _Mutex> _all = {};

@@ -111,7 +111,8 @@ class OnConnectionStateChangedEvent {
   BluetoothDevice get device => BluetoothDevice.fromId(_response.remoteId);
 
   /// the new connection state
-  BluetoothConnectionState get connectionState => _bmToConnectionState(_response.connectionState);
+  BluetoothConnectionState get connectionState =>
+      _bmToConnectionState(_response.connectionState);
 }
 
 // On Mtu Changed
@@ -127,7 +128,9 @@ class OnMtuChangedEvent {
   int get mtu => _response.mtu;
 
   /// failed?
-  FbpError? get error => _response.success ? null : FbpError(_response.errorCode, _response.errorString);
+  FbpError? get error => _response.success
+      ? null
+      : FbpError(_response.errorCode, _response.errorString);
 }
 
 // On Read Rssi
@@ -143,7 +146,9 @@ class OnReadRssiEvent {
   int get rssi => _response.rssi;
 
   /// failed?
-  FbpError? get error => _response.success ? null : FbpError(_response.errorCode, _response.errorString);
+  FbpError? get error => _response.success
+      ? null
+      : FbpError(_response.errorCode, _response.errorString);
 }
 
 // On Services Reset
@@ -166,10 +171,13 @@ class OnDiscoveredServicesEvent {
   BluetoothDevice get device => BluetoothDevice.fromId(_response.remoteId);
 
   /// the discovered services
-  List<BluetoothService> get services => _response.services.map((p) => BluetoothService.fromProto(p)).toList();
+  List<BluetoothService> get services =>
+      _response.services.map((p) => BluetoothService.fromProto(p)).toList();
 
   /// failed?
-  FbpError? get error => _response.success ? null : FbpError(_response.errorCode, _response.errorString);
+  FbpError? get error => _response.success
+      ? null
+      : FbpError(_response.errorCode, _response.errorString);
 }
 
 // On Characteristic Received
@@ -183,16 +191,19 @@ class OnCharacteristicReceivedEvent {
 
   /// the relevant characteristic
   BluetoothCharacteristic get characteristic => BluetoothCharacteristic(
-      remoteId: DeviceIdentifier(_response.remoteId),
-      characteristicUuid: _response.characteristicUuid,
-      serviceUuid: _response.serviceUuid,
-      secondaryServiceUuid: _response.secondaryServiceUuid);
+        remoteId: DeviceIdentifier(_response.remoteId),
+        characteristicUuid: _response.characteristicUuid,
+        serviceUuid: _response.serviceUuid,
+        secondaryServiceUuid: _response.secondaryServiceUuid,
+      );
 
   /// the new data
   List<int> get value => _response.value;
 
   /// failed?
-  FbpError? get error => _response.success ? null : FbpError(_response.errorCode, _response.errorString);
+  FbpError? get error => _response.success
+      ? null
+      : FbpError(_response.errorCode, _response.errorString);
 }
 
 // On Characteristic Written
@@ -206,16 +217,19 @@ class OnCharacteristicWrittenEvent {
 
   /// the relevant characteristic
   BluetoothCharacteristic get characteristic => BluetoothCharacteristic(
-      remoteId: DeviceIdentifier(_response.remoteId),
-      characteristicUuid: _response.characteristicUuid,
-      serviceUuid: _response.serviceUuid,
-      secondaryServiceUuid: _response.secondaryServiceUuid);
+        remoteId: DeviceIdentifier(_response.remoteId),
+        characteristicUuid: _response.characteristicUuid,
+        serviceUuid: _response.serviceUuid,
+        secondaryServiceUuid: _response.secondaryServiceUuid,
+      );
 
   /// the new data
   List<int> get value => _response.value;
 
   /// failed?
-  FbpError? get error => _response.success ? null : FbpError(_response.errorCode, _response.errorString);
+  FbpError? get error => _response.success
+      ? null
+      : FbpError(_response.errorCode, _response.errorString);
 }
 
 // On Descriptor Received
@@ -229,16 +243,19 @@ class OnDescriptorReadEvent {
 
   /// the relevant descriptor
   BluetoothDescriptor get descriptor => BluetoothDescriptor(
-      remoteId: DeviceIdentifier(_response.remoteId),
-      serviceUuid: _response.serviceUuid,
-      characteristicUuid: _response.characteristicUuid,
-      descriptorUuid: _response.descriptorUuid);
+        remoteId: DeviceIdentifier(_response.remoteId),
+        serviceUuid: _response.serviceUuid,
+        characteristicUuid: _response.characteristicUuid,
+        descriptorUuid: _response.descriptorUuid,
+      );
 
   /// the new data
   List<int> get value => _response.value;
 
   /// failed?
-  FbpError? get error => _response.success ? null : FbpError(_response.errorCode, _response.errorString);
+  FbpError? get error => _response.success
+      ? null
+      : FbpError(_response.errorCode, _response.errorString);
 }
 
 // On Descriptor Written
@@ -252,16 +269,19 @@ class OnDescriptorWrittenEvent {
 
   /// the relevant descriptor
   BluetoothDescriptor get descriptor => BluetoothDescriptor(
-      remoteId: DeviceIdentifier(_response.remoteId),
-      serviceUuid: _response.serviceUuid,
-      characteristicUuid: _response.characteristicUuid,
-      descriptorUuid: _response.descriptorUuid);
+        remoteId: DeviceIdentifier(_response.remoteId),
+        serviceUuid: _response.serviceUuid,
+        characteristicUuid: _response.characteristicUuid,
+        descriptorUuid: _response.descriptorUuid,
+      );
 
   /// the new data
   List<int> get value => _response.value;
 
   /// failed?
-  FbpError? get error => _response.success ? null : FbpError(_response.errorCode, _response.errorString);
+  FbpError? get error => _response.success
+      ? null
+      : FbpError(_response.errorCode, _response.errorString);
 }
 
 // On Name Changed

@@ -23,7 +23,9 @@ class Guid {
     final bytes = _hexDecode(input);
 
     if (bytes.length != 6) {
-      throw FormatException("Guid.fromString: The guid format is invalid: $input");
+      throw FormatException(
+        "Guid.fromString: The guid format is invalid: $input",
+      );
     }
 
     return bytes + List<int>.filled(10, 0);
@@ -39,18 +41,23 @@ class Guid {
     final bytes = _hexDecode(input);
 
     if (bytes.length != 16) {
-      throw FormatException("Guid.fromString: The guid format is invalid: $input");
+      throw FormatException(
+        "Guid.fromString: The guid format is invalid: $input",
+      );
     }
 
     return bytes;
   }
 
   static String _removeNonHexCharacters(String sourceString) {
-    return String.fromCharCodes(sourceString.runes.where((r) =>
+    return String.fromCharCodes(
+      sourceString.runes.where(
+        (r) =>
             (r >= 48 && r <= 57) || // characters 0 to 9
             (r >= 65 && r <= 70) || // characters A to F
-            (r >= 97 && r <= 102) // characters a to f
-        ));
+            (r >= 97 && r <= 102), // characters a to f
+      ),
+    );
   }
 
   static int _calcHashCode(List<int> bytes) {

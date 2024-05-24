@@ -2,6 +2,8 @@
 // All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
+// cspell: disable
+
 part of flutter_blue_plus;
 
 class BluetoothDevice {
@@ -11,16 +13,18 @@ class BluetoothDevice {
     required this.remoteId,
   });
 
-  BluetoothDevice.fromProto(BmBluetoothDevice p) : remoteId = DeviceIdentifier(p.remoteId);
+  BluetoothDevice.fromProto(BmBluetoothDevice p)
+      : remoteId = DeviceIdentifier(p.remoteId);
 
   /// Create a device from an id
   ///   - to connect, this device must have been discovered by your app in a previous scan
   ///   - iOS uses 128-bit uuids the remoteId, e.g. e006b3a7-ef7b-4980-a668-1f8005f84383
   ///   - Android uses 48-bit mac addresses as the remoteId, e.g. 06:E5:28:3B:FD:E0
-  BluetoothDevice.fromId(String remoteId) : remoteId = DeviceIdentifier(remoteId);
+  BluetoothDevice.fromId(String remoteId)
+      : remoteId = DeviceIdentifier(remoteId);
 
   /// platform name
-  /// - this is the device name that is kept track of by the platform 
+  /// - this is the device name that is kept track of by the platform
   /// - this name usually persist between app restarts
   /// - iOS: uses GAP name characteristic 0x2A00 if it exists, otherwise advertised name
   /// - Android: always a cached advertised name
@@ -37,7 +41,9 @@ class BluetoothDevice {
   ///  - returns null if discoverServices() has not been called
   ///  - this is cleared on disconnection. You must call discoverServices() again
   List<BluetoothService>? get servicesList {
-    return FlutterBluePlus._knownServices[remoteId]?.services.map((p) => BluetoothService.fromProto(p)).toList();
+    return FlutterBluePlus._knownServices[remoteId]?.services
+        .map((p) => BluetoothService.fromProto(p))
+        .toList();
   }
 
   /// Register a subscription to be canceled when the device is disconnected.
@@ -46,7 +52,10 @@ class BluetoothDevice {
   ///   - prevents accidentally creating duplicate subscriptions on each reconnection.
   ///   - [next] if true, the the stream will be canceled only on the *next* disconnection.
   ///     This is useful if you like to set up your subscriptions before you call connect.
-  void cancelWhenDisconnected(StreamSubscription subscription, {bool next = false}) {
+  void cancelWhenDisconnected(
+    StreamSubscription subscription, {
+    bool next = false,
+  }) {
     if (isConnected == false && next == false) {
       subscription.cancel();
     } else {
@@ -75,7 +84,6 @@ class BluetoothDevice {
     bool autoConnect = false,
     int? mtu = 512,
   }) async {
-
     // make sure no one else is calling disconnect
     _Mutex dmtx = await _MutexFactory.getMutexForKey("disconnect");
     bool dtook = await dmtx.take();
@@ -100,7 +108,8 @@ class BluetoothDevice {
       Future<BmConnectionStateResponse> futureState = responseStream.first;
 
       // invoke
-      bool changed = await FlutterBluePlus._invokeMethod('connect', request.toMap());
+      bool changed =
+          await FlutterBluePlus._invokeMethod('connect', request.toMap());
 
       // we return the disconnect mutex now so that this
       // connection attempt can be canceled by calling disconnect
@@ -112,8 +121,12 @@ class BluetoothDevice {
             .fbpEnsureAdapterIsOn("connect")
             .fbpTimeout(timeout.inSeconds, "connect")
             .catchError((e) async {
-          if (e is FlutterBluePlusException && e.code == FbpErrorCode.timeout.index) {
-            await FlutterBluePlus._invokeMethod('disconnect', remoteId.str); // cancel connection attempt
+          if (e is FlutterBluePlusException &&
+              e.code == FbpErrorCode.timeout.index) {
+            await FlutterBluePlus._invokeMethod(
+              'disconnect',
+              remoteId.str,
+            ); // cancel connection attempt
           }
           throw e;
         });
@@ -122,10 +135,18 @@ class BluetoothDevice {
         if (response.connectionState == BmConnectionStateEnum.disconnected) {
           if (response.disconnectReasonCode == 23789258) {
             throw FlutterBluePlusException(
-                ErrorPlatform.fbp, "connect", FbpErrorCode.connectionCanceled.index, "connection canceled");
+              ErrorPlatform.fbp,
+              "connect",
+              FbpErrorCode.connectionCanceled.index,
+              "connection canceled",
+            );
           } else {
             throw FlutterBluePlusException(
-                _nativeError, "connect", response.disconnectReasonCode, response.disconnectReasonString);
+              _nativeError,
+              "connect",
+              response.disconnectReasonCode,
+              response.disconnectReasonString,
+            );
           }
         }
       }
@@ -164,17 +185,22 @@ class BluetoothDevice {
           .map((m) => m.arguments)
           .map((args) => BmConnectionStateResponse.fromMap(args))
           .where((p) => p.remoteId == remoteId.str)
-          .where((p) => p.connectionState == BmConnectionStateEnum.disconnected);
+          .where(
+            (p) => p.connectionState == BmConnectionStateEnum.disconnected,
+          );
 
       // Start listening now, before invokeMethod, to ensure we don't miss the response
       Future<BmConnectionStateResponse> futureState = responseStream.first;
 
       // invoke
-      bool changed = await FlutterBluePlus._invokeMethod('disconnect', remoteId.str);
+      bool changed =
+          await FlutterBluePlus._invokeMethod('disconnect', remoteId.str);
 
       // only wait for disconnection if weren't already disconnected
       if (changed) {
-        await futureState.fbpEnsureAdapterIsOn("disconnect").fbpTimeout(timeout, "disconnect");
+        await futureState
+            .fbpEnsureAdapterIsOn("disconnect")
+            .fbpTimeout(timeout, "disconnect");
       }
     } finally {
       dtx.give();
@@ -189,7 +215,11 @@ class BluetoothDevice {
     // check connected
     if (isConnected == false) {
       throw FlutterBluePlusException(
-          ErrorPlatform.fbp, "discoverServices", FbpErrorCode.deviceIsDisconnected.index, "device is not connected");
+        ErrorPlatform.fbp,
+        "discoverServices",
+        FbpErrorCode.deviceIsDisconnected.index,
+        "device is not connected",
+      );
     }
 
     // Only allow a single ble operation to be underway at a time
@@ -219,10 +249,16 @@ class BluetoothDevice {
 
       // failed?
       if (!response.success) {
-        throw FlutterBluePlusException(_nativeError, "discoverServices", response.errorCode, response.errorString);
+        throw FlutterBluePlusException(
+          _nativeError,
+          "discoverServices",
+          response.errorCode,
+          response.errorString,
+        );
       }
 
-      result = response.services.map((p) => BluetoothService.fromProto(p)).toList();
+      result =
+          response.services.map((p) => BluetoothService.fromProto(p)).toList();
     } finally {
       mtx.give();
     }
@@ -231,7 +267,9 @@ class BluetoothDevice {
     // we always listen to the Services Changed characteristic if it exists.
     if (Platform.isIOS == false && Platform.isMacOS == false) {
       BluetoothCharacteristic? c = _servicesChangedCharacteristic;
-      if (c != null && (c.properties.notify || c.properties.indicate) && c.isNotifying == false) {
+      if (c != null &&
+          (c.properties.notify || c.properties.indicate) &&
+          c.isNotifying == false) {
         await c.setNotifyValue(true);
       }
     }
@@ -244,8 +282,10 @@ class BluetoothDevice {
     if (FlutterBluePlus._connectionStates[remoteId] == null) {
       return null;
     }
-    int? code = FlutterBluePlus._connectionStates[remoteId]!.disconnectReasonCode;
-    String? description = FlutterBluePlus._connectionStates[remoteId]!.disconnectReasonString;
+    int? code =
+        FlutterBluePlus._connectionStates[remoteId]!.disconnectReasonCode;
+    String? description =
+        FlutterBluePlus._connectionStates[remoteId]!.disconnectReasonString;
     return DisconnectReason(_nativeError, code, description);
   }
 
@@ -253,9 +293,12 @@ class BluetoothDevice {
   Stream<BluetoothConnectionState> get connectionState {
     // initial value - Note: we only care about the current connection state of
     // *our* app, which is why we can use our cached value, or assume disconnected
-    BluetoothConnectionState initialValue = BluetoothConnectionState.disconnected;
+    BluetoothConnectionState initialValue =
+        BluetoothConnectionState.disconnected;
     if (FlutterBluePlus._connectionStates[remoteId] != null) {
-      initialValue = _bmToConnectionState(FlutterBluePlus._connectionStates[remoteId]!.connectionState);
+      initialValue = _bmToConnectionState(
+        FlutterBluePlus._connectionStates[remoteId]!.connectionState,
+      );
     }
     return FlutterBluePlus._methodStream.stream
         .where((m) => m.method == "OnConnectionStateChanged")
@@ -304,7 +347,11 @@ class BluetoothDevice {
     // check connected
     if (isConnected == false) {
       throw FlutterBluePlusException(
-          ErrorPlatform.fbp, "readRssi", FbpErrorCode.deviceIsDisconnected.index, "device is not connected");
+        ErrorPlatform.fbp,
+        "readRssi",
+        FbpErrorCode.deviceIsDisconnected.index,
+        "device is not connected",
+      );
     }
 
     // Only allow a single ble operation to be underway at a time
@@ -334,7 +381,12 @@ class BluetoothDevice {
 
       // failed?
       if (!response.success) {
-        throw FlutterBluePlusException(_nativeError, "readRssi", response.errorCode, response.errorString);
+        throw FlutterBluePlusException(
+          _nativeError,
+          "readRssi",
+          response.errorCode,
+          response.errorString,
+        );
       }
       rssi = response.rssi;
     } finally {
@@ -349,13 +401,22 @@ class BluetoothDevice {
   Future<int> requestMtu(int desiredMtu, {int timeout = 15}) async {
     // check android
     if (Platform.isAndroid == false) {
-      throw FlutterBluePlusException(ErrorPlatform.fbp, "requestMtu", FbpErrorCode.androidOnly.index, "android-only");
+      throw FlutterBluePlusException(
+        ErrorPlatform.fbp,
+        "requestMtu",
+        FbpErrorCode.androidOnly.index,
+        "android-only",
+      );
     }
 
     // check connected
     if (isConnected == false) {
       throw FlutterBluePlusException(
-          ErrorPlatform.fbp, "requestMtu", FbpErrorCode.deviceIsDisconnected.index, "device is not connected");
+        ErrorPlatform.fbp,
+        "requestMtu",
+        FbpErrorCode.deviceIsDisconnected.index,
+        "device is not connected",
+      );
     }
 
     // Only allow a single ble operation to be underway at a time
@@ -396,17 +457,27 @@ class BluetoothDevice {
   }
 
   /// Request connection priority update (Android only)
-  Future<void> requestConnectionPriority({required ConnectionPriority connectionPriorityRequest}) async {
+  Future<void> requestConnectionPriority({
+    required ConnectionPriority connectionPriorityRequest,
+  }) async {
     // check android
     if (Platform.isAndroid == false) {
       throw FlutterBluePlusException(
-          ErrorPlatform.fbp, "requestConnectionPriority", FbpErrorCode.androidOnly.index, "android-only");
+        ErrorPlatform.fbp,
+        "requestConnectionPriority",
+        FbpErrorCode.androidOnly.index,
+        "android-only",
+      );
     }
 
     // check connected
     if (isConnected == false) {
-      throw FlutterBluePlusException(ErrorPlatform.fbp, "requestConnectionPriority",
-          FbpErrorCode.deviceIsDisconnected.index, "device is not connected");
+      throw FlutterBluePlusException(
+        ErrorPlatform.fbp,
+        "requestConnectionPriority",
+        FbpErrorCode.deviceIsDisconnected.index,
+        "device is not connected",
+      );
     }
 
     var request = BmConnectionPriorityRequest(
@@ -415,7 +486,10 @@ class BluetoothDevice {
     );
 
     // invoke
-    await FlutterBluePlus._invokeMethod('requestConnectionPriority', request.toMap());
+    await FlutterBluePlus._invokeMethod(
+      'requestConnectionPriority',
+      request.toMap(),
+    );
   }
 
   /// Set the preferred connection (Android Only)
@@ -431,13 +505,21 @@ class BluetoothDevice {
     // check android
     if (Platform.isAndroid == false) {
       throw FlutterBluePlusException(
-          ErrorPlatform.fbp, "setPreferredPhy", FbpErrorCode.androidOnly.index, "android-only");
+        ErrorPlatform.fbp,
+        "setPreferredPhy",
+        FbpErrorCode.androidOnly.index,
+        "android-only",
+      );
     }
 
     // check connected
     if (isConnected == false) {
       throw FlutterBluePlusException(
-          ErrorPlatform.fbp, "setPreferredPhy", FbpErrorCode.deviceIsDisconnected.index, "device is not connected");
+        ErrorPlatform.fbp,
+        "setPreferredPhy",
+        FbpErrorCode.deviceIsDisconnected.index,
+        "device is not connected",
+      );
     }
 
     var request = BmPreferredPhy(
@@ -456,13 +538,22 @@ class BluetoothDevice {
   Future<void> createBond({int timeout = 90}) async {
     // check android
     if (Platform.isAndroid == false) {
-      throw FlutterBluePlusException(ErrorPlatform.fbp, "createBond", FbpErrorCode.androidOnly.index, "android-only");
+      throw FlutterBluePlusException(
+        ErrorPlatform.fbp,
+        "createBond",
+        FbpErrorCode.androidOnly.index,
+        "android-only",
+      );
     }
 
     // check connected
     if (isConnected == false) {
       throw FlutterBluePlusException(
-          ErrorPlatform.fbp, "createBond", FbpErrorCode.deviceIsDisconnected.index, "device is not connected");
+        ErrorPlatform.fbp,
+        "createBond",
+        FbpErrorCode.deviceIsDisconnected.index,
+        "device is not connected",
+      );
     }
 
     // Only allow a single ble operation to be underway at a time
@@ -481,7 +572,8 @@ class BluetoothDevice {
       Future<BmBondStateResponse> futureResponse = responseStream.first;
 
       // invoke
-      bool changed = await FlutterBluePlus._invokeMethod('createBond', remoteId.str);
+      bool changed =
+          await FlutterBluePlus._invokeMethod('createBond', remoteId.str);
 
       // only wait for 'bonded' if we weren't already bonded
       if (changed) {
@@ -492,8 +584,12 @@ class BluetoothDevice {
 
         // success?
         if (bs.bondState != BmBondStateEnum.bonded) {
-          throw FlutterBluePlusException(ErrorPlatform.fbp, "createBond", FbpErrorCode.createBondFailed.hashCode,
-              "Failed to create bond. ${bs.bondState}");
+          throw FlutterBluePlusException(
+            ErrorPlatform.fbp,
+            "createBond",
+            FbpErrorCode.createBondFailed.hashCode,
+            "Failed to create bond. ${bs.bondState}",
+          );
         }
       }
     } finally {
@@ -505,7 +601,12 @@ class BluetoothDevice {
   Future<void> removeBond({int timeout = 30}) async {
     // check android
     if (Platform.isAndroid == false) {
-      throw FlutterBluePlusException(ErrorPlatform.fbp, "removeBond", FbpErrorCode.androidOnly.index, "android-only");
+      throw FlutterBluePlusException(
+        ErrorPlatform.fbp,
+        "removeBond",
+        FbpErrorCode.androidOnly.index,
+        "android-only",
+      );
     }
 
     // Only allow a single ble operation to be underway at a time
@@ -524,7 +625,8 @@ class BluetoothDevice {
       Future<BmBondStateResponse> futureResponse = responseStream.first;
 
       // invoke
-      bool changed = await FlutterBluePlus._invokeMethod('removeBond', remoteId.str);
+      bool changed =
+          await FlutterBluePlus._invokeMethod('removeBond', remoteId.str);
 
       // only wait for 'unbonded' state if we weren't already unbonded
       if (changed) {
@@ -535,8 +637,12 @@ class BluetoothDevice {
 
         // success?
         if (bs.bondState != BmBondStateEnum.none) {
-          throw FlutterBluePlusException(ErrorPlatform.fbp, "createBond", FbpErrorCode.removeBondFailed.hashCode,
-              "Failed to remove bond. ${bs.bondState}");
+          throw FlutterBluePlusException(
+            ErrorPlatform.fbp,
+            "createBond",
+            FbpErrorCode.removeBondFailed.hashCode,
+            "Failed to remove bond. ${bs.bondState}",
+          );
         }
       }
     } finally {
@@ -549,13 +655,21 @@ class BluetoothDevice {
     // check android
     if (Platform.isAndroid == false) {
       throw FlutterBluePlusException(
-          ErrorPlatform.fbp, "clearGattCache", FbpErrorCode.androidOnly.index, "android-only");
+        ErrorPlatform.fbp,
+        "clearGattCache",
+        FbpErrorCode.androidOnly.index,
+        "android-only",
+      );
     }
 
     // check connected
     if (isConnected == false) {
       throw FlutterBluePlusException(
-          ErrorPlatform.fbp, "clearGattCache", FbpErrorCode.deviceIsDisconnected.index, "device is not connected");
+        ErrorPlatform.fbp,
+        "clearGattCache",
+        FbpErrorCode.deviceIsDisconnected.index,
+        "device is not connected",
+      );
     }
 
     // invoke
@@ -566,13 +680,19 @@ class BluetoothDevice {
   Stream<BluetoothBondState> get bondState async* {
     // check android
     if (Platform.isAndroid == false) {
-      throw FlutterBluePlusException(ErrorPlatform.fbp, "bondState", FbpErrorCode.androidOnly.index, "android-only");
+      throw FlutterBluePlusException(
+        ErrorPlatform.fbp,
+        "bondState",
+        FbpErrorCode.androidOnly.index,
+        "android-only",
+      );
     }
 
     // do we already have the initial state?
     if (FlutterBluePlus._bondStates[remoteId] != null) {
       // we prefer to use the cached bond state, if available
-      BluetoothBondState initialValue = _bmToBondState(FlutterBluePlus._bondStates[remoteId]!.bondState);
+      BluetoothBondState initialValue =
+          _bmToBondState(FlutterBluePlus._bondStates[remoteId]!.bondState);
       yield* FlutterBluePlus._methodStream.stream
           .where((m) => m.method == "OnBondStateChanged")
           .map((m) => m.arguments)
@@ -583,12 +703,14 @@ class BluetoothDevice {
     } else {
       // start listening now so we do not miss any changes
       // while we are getting the inital bond state
-      var buffer = _BufferStream.listen(FlutterBluePlus._methodStream.stream
-          .where((m) => m.method == "OnBondStateChanged")
-          .map((m) => m.arguments)
-          .map((args) => BmBondStateResponse.fromMap(args))
-          .where((p) => p.remoteId == remoteId.str)
-          .map((p) => _bmToBondState(p.bondState)));
+      var buffer = _BufferStream.listen(
+        FlutterBluePlus._methodStream.stream
+            .where((m) => m.method == "OnBondStateChanged")
+            .map((m) => m.arguments)
+            .map((args) => BmBondStateResponse.fromMap(args))
+            .where((p) => p.remoteId == remoteId.str)
+            .map((p) => _bmToBondState(p.bondState)),
+      );
 
       // must get the initial state from the system.
       BluetoothBondState initialValue = await FlutterBluePlus._methods
@@ -614,15 +736,20 @@ class BluetoothDevice {
   /// Get the Services Changed characteristic (0x2A05)
   BluetoothCharacteristic? get _servicesChangedCharacteristic {
     final Guid gattUuid = Guid("00001801-0000-1000-8000-00805F9B34FB");
-    final Guid servicesChangedUuid = Guid("00002A05-0000-1000-8000-00805F9B34FB");
-    BluetoothService? gatt = servicesList?._firstWhereOrNull((svc) => svc.uuid == gattUuid);
-    return gatt?.characteristics._firstWhereOrNull((chr) => chr.uuid == servicesChangedUuid);
+    final Guid servicesChangedUuid =
+        Guid("00002A05-0000-1000-8000-00805F9B34FB");
+    BluetoothService? gatt =
+        servicesList?._firstWhereOrNull((svc) => svc.uuid == gattUuid);
+    return gatt?.characteristics
+        ._firstWhereOrNull((chr) => chr.uuid == servicesChangedUuid);
   }
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is BluetoothDevice && runtimeType == other.runtimeType && remoteId == other.remoteId);
+      (other is BluetoothDevice &&
+          runtimeType == other.runtimeType &&
+          remoteId == other.remoteId);
 
   @override
   int get hashCode => remoteId.hashCode;

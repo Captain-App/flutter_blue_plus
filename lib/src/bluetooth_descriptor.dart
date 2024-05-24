@@ -2,6 +2,8 @@
 // All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
+// cspell: disable
+
 part of flutter_blue_plus;
 
 class BluetoothDescriptor {
@@ -42,7 +44,10 @@ class BluetoothDescriptor {
   ///   - anytime `write()` is called
   ///   - and when first listened to, it re-emits the last value for convenience
   Stream<List<int>> get lastValueStream => FlutterBluePlus._methodStream.stream
-      .where((m) => m.method == "OnDescriptorRead" || m.method == "OnDescriptorWritten")
+      .where(
+        (m) =>
+            m.method == "OnDescriptorRead" || m.method == "OnDescriptorWritten",
+      )
       .map((m) => m.arguments)
       .map((args) => BmDescriptorData.fromMap(args))
       .where((p) => p.remoteId == remoteId.toString())
@@ -71,7 +76,11 @@ class BluetoothDescriptor {
     // check connected
     if (device.isConnected == false) {
       throw FlutterBluePlusException(
-          ErrorPlatform.fbp, "readDescriptor", FbpErrorCode.deviceIsDisconnected.index, "device is not connected");
+        ErrorPlatform.fbp,
+        "readDescriptor",
+        FbpErrorCode.deviceIsDisconnected.index,
+        "device is not connected",
+      );
     }
 
     // Only allow a single ble operation to be underway at a time
@@ -90,7 +99,8 @@ class BluetoothDescriptor {
         descriptorUuid: descriptorUuid,
       );
 
-      Stream<BmDescriptorData> responseStream = FlutterBluePlus._methodStream.stream
+      Stream<BmDescriptorData> responseStream = FlutterBluePlus
+          ._methodStream.stream
           .where((m) => m.method == "OnDescriptorRead")
           .map((m) => m.arguments)
           .map((args) => BmDescriptorData.fromMap(args))
@@ -113,7 +123,12 @@ class BluetoothDescriptor {
 
       // failed?
       if (!response.success) {
-        throw FlutterBluePlusException(_nativeError, "readDescriptor", response.errorCode, response.errorString);
+        throw FlutterBluePlusException(
+          _nativeError,
+          "readDescriptor",
+          response.errorCode,
+          response.errorString,
+        );
       }
 
       readValue = response.value;
@@ -129,7 +144,11 @@ class BluetoothDescriptor {
     // check connected
     if (device.isConnected == false) {
       throw FlutterBluePlusException(
-          ErrorPlatform.fbp, "writeDescriptor", FbpErrorCode.deviceIsDisconnected.index, "device is not connected");
+        ErrorPlatform.fbp,
+        "writeDescriptor",
+        FbpErrorCode.deviceIsDisconnected.index,
+        "device is not connected",
+      );
     }
 
     // Only allow a single ble operation to be underway at a time
@@ -146,7 +165,8 @@ class BluetoothDescriptor {
         value: value,
       );
 
-      Stream<BmDescriptorData> responseStream = FlutterBluePlus._methodStream.stream
+      Stream<BmDescriptorData> responseStream = FlutterBluePlus
+          ._methodStream.stream
           .where((m) => m.method == "OnDescriptorWritten")
           .map((m) => m.arguments)
           .map((args) => BmDescriptorData.fromMap(args))
@@ -169,7 +189,12 @@ class BluetoothDescriptor {
 
       // failed?
       if (!response.success) {
-        throw FlutterBluePlusException(_nativeError, "writeDescriptor", response.errorCode, response.errorString);
+        throw FlutterBluePlusException(
+          _nativeError,
+          "writeDescriptor",
+          response.errorCode,
+          response.errorString,
+        );
       }
     } finally {
       mtx.give();
