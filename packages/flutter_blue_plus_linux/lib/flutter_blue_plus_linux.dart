@@ -211,6 +211,20 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
   Stream<BmScanResponse> get onScanResponse {
     return _client.deviceAdded.map(
       (device) {
+        // Add debug logging for device discovery
+        print(
+            '[FBP-Linux] Debug: Scan discovered device: ${device.address} (${device.name}), RSSI: ${device.rssi}');
+
+        // Special logging for target devices
+        final deviceName = device.name.toLowerCase();
+        if (deviceName.contains('micro') ||
+            deviceName.contains('node') ||
+            deviceName.contains('glamox') ||
+            deviceName.contains('mate')) {
+          print(
+              '[FBP-Linux] Debug: *** IMPORTANT: Target device found in scan: ${device.address} (${device.name}) ***');
+        }
+
         return BmScanResponse(
           advertisements: [
             BmScanAdvertisement(
@@ -280,30 +294,53 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
       await _initFlutterBluePlus();
 
       print('[FBP-Linux] Attempting to connect to device: ${request.remoteId}');
+      print(
+          '[FBP-Linux] Debug: Total devices in BlueZ: ${_client.devices.length}');
 
       // First handle the case where remoteId might be just the raw MAC address
       String deviceAddress = request.remoteId.toString();
+      print('[FBP-Linux] Debug: Parsed device address: $deviceAddress');
       BlueZDevice? targetDevice;
 
       // Try to find the device with max retry attempts
       int maxRetries = 3;
       for (int attempt = 0; attempt < maxRetries; attempt++) {
         try {
+          print(
+              '[FBP-Linux] Debug: Search attempt ${attempt + 1}, looking for device with ID/address: $deviceAddress');
+
+          // List all available devices with their addresses for debugging
+          if (_client.devices.isNotEmpty) {
+            print('[FBP-Linux] Debug: Available devices:');
+            for (final device in _client.devices) {
+              print(
+                  '[FBP-Linux] Debug:   - ${device.address} (${device.name})');
+            }
+          } else {
+            print('[FBP-Linux] Debug: No devices found in BlueZ registry');
+          }
+
           targetDevice = _client.devices.singleWhere(
-            (device) =>
-                device.remoteId == request.remoteId ||
-                device.address.toLowerCase() == deviceAddress.toLowerCase(),
+            (device) {
+              final match = device.remoteId == request.remoteId ||
+                  device.address.toLowerCase() == deviceAddress.toLowerCase();
+              print(
+                  '[FBP-Linux] Debug: Checking device ${device.address}, name: ${device.name}, match: $match');
+              return match;
+            },
           );
 
           if (targetDevice != null) {
-            print('[FBP-Linux] Found device, attempting connection');
+            print(
+                '[FBP-Linux] Found device, attempting connection to ${targetDevice.address} (${targetDevice.name})');
             break;
           }
         } catch (e) {
           // If device not found and we're not on final attempt, scan again
+          print(
+              '[FBP-Linux] Debug: Device not found on attempt ${attempt + 1}: $e');
           if (attempt < maxRetries - 1) {
-            print(
-                '[FBP-Linux] Device not found on attempt ${attempt + 1}, rescanning...');
+            print('[FBP-Linux] Debug: Rescanning for devices...');
             await _client.adapters.first.startDiscovery();
             await Future.delayed(const Duration(seconds: 2));
             await _client.adapters.first.stopDiscovery();
@@ -314,25 +351,88 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
       // If we couldn't find the device, try fallback methods
       if (targetDevice == null) {
         print('[FBP-Linux] Device not found in BlueZ, trying fallbacks');
-        throw Exception('Device not found in BlueZ');
+
+        // Try to find by address using a more tolerant approach
+        try {
+          print(
+              '[FBP-Linux] Debug: Attempting fallback device lookup with address: $deviceAddress');
+          for (final device in _client.devices) {
+            print(
+                '[FBP-Linux] Debug: Checking if ${device.address} matches $deviceAddress');
+            if (device.address
+                    .toLowerCase()
+                    .contains(deviceAddress.toLowerCase()) ||
+                deviceAddress
+                    .toLowerCase()
+                    .contains(device.address.toLowerCase())) {
+              print(
+                  '[FBP-Linux] Debug: Found partial match: ${device.address}');
+              targetDevice = device;
+              break;
+            }
+          }
+        } catch (e) {
+          print('[FBP-Linux] Debug: Error in fallback device lookup: $e');
+        }
+
+        // If still null, try system commands
+        if (targetDevice == null) {
+          print(
+              '[FBP-Linux] Debug: Device not found in BlueZ, trying direct system commands');
+          throw Exception('Device not found in BlueZ');
+        }
       }
 
+      print(
+          '[FBP-Linux] Debug: Device found, proceeding with connection to ${targetDevice.address}');
+      print(
+          '[FBP-Linux] Debug: Device status before connection - paired: ${targetDevice.paired}, trusted: ${targetDevice.trusted}, connected: ${targetDevice.connected}');
+
       // Now connect to the device
-      await targetDevice.connect();
+      try {
+        print('[FBP-Linux] Debug: Calling connect() on BlueZ device');
+        await targetDevice.connect();
+        print('[FBP-Linux] Debug: BlueZ connect() call completed');
+      } catch (e) {
+        print('[FBP-Linux] Debug: BlueZ connect() method failed: $e');
+        print('[FBP-Linux] Debug: Attempting to pair before connecting');
+
+        try {
+          await targetDevice.pair();
+          print('[FBP-Linux] Debug: Pairing successful, retrying connection');
+          await targetDevice.connect();
+        } catch (pairError) {
+          print('[FBP-Linux] Debug: Pairing failed: $pairError');
+          throw pairError;
+        }
+      }
 
       // Wait for a moment to allow services to be discovered
+      print('[FBP-Linux] Debug: Waiting for services to be discovered');
       await Future.delayed(Duration(seconds: 1));
 
       // Verify that the device is connected
+      print(
+          '[FBP-Linux] Debug: Checking connection status after connect attempt');
       if (targetDevice.connected) {
         print('[FBP-Linux] Connection successful');
 
+        // Get available services
+        print(
+            '[FBP-Linux] Debug: Available services: ${targetDevice.gattServices.length}');
+        for (var service in targetDevice.gattServices) {
+          print('[FBP-Linux] Debug: Service: ${service.uuid.value}');
+        }
+
         // Try to refresh device services to ensure they're available
+        print('[FBP-Linux] Debug: Refreshing device services');
         await _refreshDeviceServices(targetDevice);
 
         return true;
       } else {
-        print('[FBP-Linux] Connection failed');
+        print('[FBP-Linux] Connection failed, device reports not connected');
+        print(
+            '[FBP-Linux] Debug: Device status after failed connection - paired: ${targetDevice.paired}, trusted: ${targetDevice.trusted}, connected: ${targetDevice.connected}');
         return false;
       }
     } catch (e) {
@@ -341,11 +441,20 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
       // Try system command as fallback for Raspberry Pi
       try {
         print('[FBP-Linux] Attempting fallback connection using bluetoothctl');
+        print(
+            '[FBP-Linux] Debug: Using address: ${request.remoteId.toString()}');
 
         final result = await Process.run(
             'bluetoothctl', ['connect', request.remoteId.toString()]);
         final success = result.exitCode == 0 &&
             !result.stdout.toString().contains('Failed to connect');
+
+        print(
+            '[FBP-Linux] Debug: Bluetoothctl result - exit code: ${result.exitCode}');
+        print('[FBP-Linux] Debug: Bluetoothctl output: ${result.stdout}');
+        if (result.stderr.toString().isNotEmpty) {
+          print('[FBP-Linux] Debug: Bluetoothctl error: ${result.stderr}');
+        }
 
         if (success) {
           print('[FBP-Linux] Fallback connection successful');
@@ -380,23 +489,57 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
       // So we'll just log what we found
       print('[FBP-Linux] Services found: ${device.gattServices.length}');
 
+      if (device.gattServices.isEmpty) {
+        print(
+            '[FBP-Linux] WARNING: No services found for device ${device.remoteId}');
+        print(
+            '[FBP-Linux] Debug: Attempting to trigger service discovery via BlueZ');
+
+        try {
+          // Try to force discovery through direct DBus examination
+          print('[FBP-Linux] Debug: Examining device object paths');
+
+          // Check device properties to ensure it's in a good state
+          print(
+              '[FBP-Linux] Debug: Device properties - connected: ${device.connected}, paired: ${device.paired}, trusted: ${device.trusted}');
+
+          // Try to force service discovery through other mechanisms
+          await device
+              .connect(); // Try reconnecting to trigger service discovery
+        } catch (e) {
+          print('[FBP-Linux] Debug: Error in service discovery: $e');
+        }
+      }
+
       for (final service in device.gattServices) {
         print('[FBP-Linux] Service: ${service.uuid}');
+
+        // Log characteristics for each service
+        print(
+            '[FBP-Linux] Debug: Characteristics for service ${service.uuid}: ${service.characteristics.length}');
+        for (final characteristic in service.characteristics) {
+          print(
+              '[FBP-Linux] Debug:   - Characteristic: ${characteristic.uuid}, flags: ${characteristic.flags}');
+        }
       }
     } catch (e) {
       print('[FBP-Linux] Error accessing services: $e');
+      print('[FBP-Linux] Debug: Stack trace: ${StackTrace.current}');
     }
   }
 
   // Helper method to refresh the BlueZ client
   Future<void> _refreshClient() async {
     try {
+      print('[FBP-Linux] Debug: Refreshing BlueZ client connection');
       // We can't disconnect and reconnect the client directly
       // So we'll create a new client instance
       _initialized = false;
       await _initFlutterBluePlus();
+      print('[FBP-Linux] Debug: BlueZ client refreshed successfully');
     } catch (e) {
       print('[FBP-Linux] Error reinitializing client: $e');
+      print('[FBP-Linux] Debug: Stack trace: ${StackTrace.current}');
     }
   }
 
@@ -442,139 +585,162 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
       await _initFlutterBluePlus();
 
       print('[FBP-Linux] Discovering services for device: ${request.remoteId}');
+      print(
+          '[FBP-Linux] Debug: Total known devices: ${_client.devices.length}');
 
-      final device = _client.devices.singleWhere(
-        (device) {
-          return device.remoteId == request.remoteId;
-        },
-      );
+      // Print list of devices we know about first
+      print('[FBP-Linux] Debug: Known devices:');
+      for (final d in _client.devices) {
+        print(
+            '[FBP-Linux] Debug: - Device ${d.address} (${d.name}), Connected: ${d.connected}');
+      }
 
-      // If no services are found, try to refresh services first
-      if (device.gattServices.isEmpty) {
-        print('[FBP-Linux] No services found, attempting to refresh services');
-        await _refreshDeviceServices(device);
+      try {
+        final device = _client.devices.singleWhere(
+          (device) {
+            final matches = device.remoteId == request.remoteId;
+            print(
+                '[FBP-Linux] Debug: Checking if device ${device.address} matches target ${request.remoteId}: $matches');
+            return matches;
+          },
+        );
 
-        // If still no services, try fallback method with system commands
+        // If no services are found, try to refresh services first
         if (device.gattServices.isEmpty) {
           print(
-              '[FBP-Linux] Still no services after refresh, trying system commands');
-          return await _discoverServicesWithSystemCommands(request);
+              '[FBP-Linux] No services found, attempting to refresh services');
+          await _refreshDeviceServices(device);
+
+          // If still no services, try fallback method with system commands
+          if (device.gattServices.isEmpty) {
+            print(
+                '[FBP-Linux] Still no services after refresh, trying system commands');
+            print('[FBP-Linux] Debug: Using device address: ${device.address}');
+            return await _discoverServicesWithSystemCommands(request);
+          }
         }
-      }
 
-      print('[FBP-Linux] Found ${device.gattServices.length} services');
+        print('[FBP-Linux] Found ${device.gattServices.length} services');
 
-      // For debugging, log all found services and characteristics
-      for (final service in device.gattServices) {
-        final serviceUuid = Guid.fromBytes(service.uuid.value);
-        print('[FBP-Linux] Service: $serviceUuid');
+        // For debugging, log all found services and characteristics
+        for (final service in device.gattServices) {
+          final serviceUuid = Guid.fromBytes(service.uuid.value);
+          print('[FBP-Linux] Service: $serviceUuid');
 
-        for (final characteristic in service.characteristics) {
-          final charUuid = Guid.fromBytes(characteristic.uuid.value);
-          final properties = <String>[];
+          for (final characteristic in service.characteristics) {
+            final charUuid = Guid.fromBytes(characteristic.uuid.value);
+            final properties = <String>[];
 
-          if (characteristic.flags.contains(BlueZGattCharacteristicFlag.read)) {
-            properties.add('read');
+            if (characteristic.flags
+                .contains(BlueZGattCharacteristicFlag.read)) {
+              properties.add('read');
+            }
+            if (characteristic.flags
+                .contains(BlueZGattCharacteristicFlag.write)) {
+              properties.add('write');
+            }
+            if (characteristic.flags
+                .contains(BlueZGattCharacteristicFlag.notify)) {
+              properties.add('notify');
+            }
+            if (characteristic.flags
+                .contains(BlueZGattCharacteristicFlag.indicate)) {
+              properties.add('indicate');
+            }
+
+            print(
+                '[FBP-Linux]   - Characteristic: $charUuid (${properties.join(', ')})');
           }
-          if (characteristic.flags
-              .contains(BlueZGattCharacteristicFlag.write)) {
-            properties.add('write');
-          }
-          if (characteristic.flags
-              .contains(BlueZGattCharacteristicFlag.notify)) {
-            properties.add('notify');
-          }
-          if (characteristic.flags
-              .contains(BlueZGattCharacteristicFlag.indicate)) {
-            properties.add('indicate');
-          }
-
-          print(
-              '[FBP-Linux]   - Characteristic: $charUuid (${properties.join(', ')})');
         }
+
+        _onDiscoveredServicesController.add(
+          BmDiscoverServicesResult(
+            remoteId: device.remoteId,
+            services: device.gattServices.map(
+              (service) {
+                return BmBluetoothService(
+                  serviceUuid: Guid.fromBytes(
+                    service.uuid.value,
+                  ),
+                  remoteId: device.remoteId,
+                  characteristics: service.characteristics.map(
+                    (characteristic) {
+                      return BmBluetoothCharacteristic(
+                        remoteId: device.remoteId,
+                        serviceUuid: Guid.fromBytes(
+                          service.uuid.value,
+                        ),
+                        characteristicUuid: Guid.fromBytes(
+                          characteristic.uuid.value,
+                        ),
+                        primaryServiceUuid: null,
+                        descriptors: characteristic.descriptors.map(
+                          (descriptor) {
+                            return BmBluetoothDescriptor(
+                              remoteId: device.remoteId,
+                              serviceUuid: Guid.fromBytes(
+                                service.uuid.value,
+                              ),
+                              characteristicUuid: Guid.fromBytes(
+                                characteristic.uuid.value,
+                              ),
+                              descriptorUuid: Guid.fromBytes(
+                                descriptor.uuid.value,
+                              ),
+                              primaryServiceUuid: null,
+                            );
+                          },
+                        ).toList(),
+                        properties: BmCharacteristicProperties(
+                          broadcast: characteristic.flags.contains(
+                            BlueZGattCharacteristicFlag.broadcast,
+                          ),
+                          read: characteristic.flags.contains(
+                            BlueZGattCharacteristicFlag.read,
+                          ),
+                          writeWithoutResponse: characteristic.flags.contains(
+                            BlueZGattCharacteristicFlag.writeWithoutResponse,
+                          ),
+                          write: characteristic.flags.contains(
+                            BlueZGattCharacteristicFlag.write,
+                          ),
+                          notify: characteristic.flags.contains(
+                            BlueZGattCharacteristicFlag.notify,
+                          ),
+                          indicate: characteristic.flags.contains(
+                            BlueZGattCharacteristicFlag.indicate,
+                          ),
+                          authenticatedSignedWrites:
+                              characteristic.flags.contains(
+                            BlueZGattCharacteristicFlag
+                                .authenticatedSignedWrites,
+                          ),
+                          extendedProperties: characteristic.flags.contains(
+                            BlueZGattCharacteristicFlag.extendedProperties,
+                          ),
+                          notifyEncryptionRequired: false,
+                          indicateEncryptionRequired: false,
+                        ),
+                      );
+                    },
+                  ).toList(),
+                  primaryServiceUuid: null,
+                );
+              },
+            ).toList(),
+            success: true,
+            errorCode: 0,
+            errorString: '',
+          ),
+        );
+
+        return true;
+      } catch (e) {
+        print('[FBP-Linux] Error discovering services: $e');
+
+        // Try system command fallback
+        return await _discoverServicesWithSystemCommands(request);
       }
-
-      _onDiscoveredServicesController.add(
-        BmDiscoverServicesResult(
-          remoteId: device.remoteId,
-          services: device.gattServices.map(
-            (service) {
-              return BmBluetoothService(
-                serviceUuid: Guid.fromBytes(
-                  service.uuid.value,
-                ),
-                remoteId: device.remoteId,
-                characteristics: service.characteristics.map(
-                  (characteristic) {
-                    return BmBluetoothCharacteristic(
-                      remoteId: device.remoteId,
-                      serviceUuid: Guid.fromBytes(
-                        service.uuid.value,
-                      ),
-                      characteristicUuid: Guid.fromBytes(
-                        characteristic.uuid.value,
-                      ),
-                      primaryServiceUuid: null,
-                      descriptors: characteristic.descriptors.map(
-                        (descriptor) {
-                          return BmBluetoothDescriptor(
-                            remoteId: device.remoteId,
-                            serviceUuid: Guid.fromBytes(
-                              service.uuid.value,
-                            ),
-                            characteristicUuid: Guid.fromBytes(
-                              characteristic.uuid.value,
-                            ),
-                            descriptorUuid: Guid.fromBytes(
-                              descriptor.uuid.value,
-                            ),
-                            primaryServiceUuid: null,
-                          );
-                        },
-                      ).toList(),
-                      properties: BmCharacteristicProperties(
-                        broadcast: characteristic.flags.contains(
-                          BlueZGattCharacteristicFlag.broadcast,
-                        ),
-                        read: characteristic.flags.contains(
-                          BlueZGattCharacteristicFlag.read,
-                        ),
-                        writeWithoutResponse: characteristic.flags.contains(
-                          BlueZGattCharacteristicFlag.writeWithoutResponse,
-                        ),
-                        write: characteristic.flags.contains(
-                          BlueZGattCharacteristicFlag.write,
-                        ),
-                        notify: characteristic.flags.contains(
-                          BlueZGattCharacteristicFlag.notify,
-                        ),
-                        indicate: characteristic.flags.contains(
-                          BlueZGattCharacteristicFlag.indicate,
-                        ),
-                        authenticatedSignedWrites:
-                            characteristic.flags.contains(
-                          BlueZGattCharacteristicFlag.authenticatedSignedWrites,
-                        ),
-                        extendedProperties: characteristic.flags.contains(
-                          BlueZGattCharacteristicFlag.extendedProperties,
-                        ),
-                        notifyEncryptionRequired: false,
-                        indicateEncryptionRequired: false,
-                      ),
-                    );
-                  },
-                ).toList(),
-                primaryServiceUuid: null,
-              );
-            },
-          ).toList(),
-          success: true,
-          errorCode: 0,
-          errorString: '',
-        ),
-      );
-
-      return true;
     } catch (e) {
       print('[FBP-Linux] Error discovering services: $e');
 
@@ -589,22 +755,61 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
     try {
       print(
           '[FBP-Linux] Attempting to discover services using system commands');
+      print('[FBP-Linux] Debug: Device ID: ${request.remoteId}');
+
+      // First try with bluetoothctl to see if we can connect
+      print('[FBP-Linux] Debug: Attempting to connect with bluetoothctl first');
+      final connectResult = await Process.run(
+          'bluetoothctl', ['connect', request.remoteId.toString()]);
+      print(
+          '[FBP-Linux] Debug: Bluetoothctl connect result: ${connectResult.exitCode}');
+      print('[FBP-Linux] Debug: Bluetoothctl output: ${connectResult.stdout}');
+      if (connectResult.stderr.toString().isNotEmpty) {
+        print(
+            '[FBP-Linux] Debug: Bluetoothctl stderr: ${connectResult.stderr}');
+      }
 
       // Use gatttool for service discovery
+      print('[FBP-Linux] Debug: Running gatttool primary service discovery');
       final result = await Process.run(
           'gatttool', ['-b', request.remoteId.toString(), '--primary']);
 
       if (result.exitCode != 0) {
         print('[FBP-Linux] gatttool command failed: ${result.stderr}');
-        return false;
+        print('[FBP-Linux] Debug: Exit code: ${result.exitCode}');
+
+        // Try alternate approach with timeout
+        print(
+            '[FBP-Linux] Debug: Trying alternative service discovery approach');
+        final altResult = await Process.run('sh', [
+          '-c',
+          'timeout 5 gatttool -b ${request.remoteId.toString()} --primary'
+        ]);
+        print(
+            '[FBP-Linux] Debug: Alternative approach exit code: ${altResult.exitCode}');
+        print('[FBP-Linux] Debug: Alternative output: ${altResult.stdout}');
+
+        if (altResult.stderr.toString().isNotEmpty) {
+          print('[FBP-Linux] Debug: Alternative stderr: ${altResult.stderr}');
+        }
+
+        // If still failing, return false
+        if (altResult.exitCode != 0) {
+          return false;
+        }
       }
 
       // Parse services
       final output = result.stdout.toString();
+      print('[FBP-Linux] Debug: Gatttool raw output: $output');
+
       final serviceLines =
           output.split('\n').where((line) => line.contains('uuid:')).toList();
 
       print('[FBP-Linux] Found ${serviceLines.length} services using gatttool');
+      for (final line in serviceLines) {
+        print('[FBP-Linux] Debug: Service: $line');
+      }
 
       // Create a fake services list
       final services = <BmBluetoothService>[];
@@ -627,6 +832,9 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
         return true;
       }
 
+      // TODO: Parse service UUIDs and attempt to create service objects
+      // For now, just sending an empty list as we need more complex parsing
+
       // Send the result with the discovered services
       _onDiscoveredServicesController.add(
         BmDiscoverServicesResult(
@@ -641,6 +849,7 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
       return true;
     } catch (e) {
       print('[FBP-Linux] Error in system command service discovery: $e');
+      print('[FBP-Linux] Debug: Stack trace: ${StackTrace.current}');
 
       // Create a failed result
       _onDiscoveredServicesController.add(
@@ -1061,17 +1270,43 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
   ) async {
     await _initFlutterBluePlus();
 
-    await _client.adapters.first.setDiscoveryFilter(
-      uuids: request.withServices.map(
-        (uuid) {
-          return uuid.str128;
-        },
-      ).toList(),
-    );
+    print(
+        '[FBP-Linux] Debug: Starting scan with service UUIDs: ${request.withServices.map((uuid) => uuid.str128).join(', ')}');
+    print(
+        '[FBP-Linux] Debug: Adapter state: ${_client.adapters.first.powered ? 'powered' : 'unpowered'}');
+    print(
+        '[FBP-Linux] Debug: Known devices before scan: ${_client.devices.length}');
 
-    await _client.adapters.first.startDiscovery();
+    try {
+      await _client.adapters.first.setDiscoveryFilter(
+        uuids: request.withServices.map(
+          (uuid) {
+            return uuid.str128;
+          },
+        ).toList(),
+      );
 
-    return true;
+      print('[FBP-Linux] Debug: Discovery filter set successfully');
+
+      // Start discovery and log results
+      await _client.adapters.first.startDiscovery();
+      print('[FBP-Linux] Debug: Discovery started, waiting for devices...');
+
+      // Schedule a delayed check to see what was found
+      Future.delayed(Duration(seconds: 5), () {
+        print(
+            '[FBP-Linux] Debug: Devices found after 5s: ${_client.devices.length}');
+        for (final device in _client.devices) {
+          print(
+              '[FBP-Linux] Debug: - Device: ${device.address} (${device.name}), RSSI: ${device.rssi}');
+        }
+      });
+
+      return true;
+    } catch (e) {
+      print('[FBP-Linux] Error starting scan: $e');
+      return false;
+    }
   }
 
   @override
@@ -1080,8 +1315,19 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
   ) async {
     await _initFlutterBluePlus();
 
-    await _client.adapters.first.stopDiscovery();
+    print('[FBP-Linux] Debug: Stopping scan');
+    print('[FBP-Linux] Debug: Final device count: ${_client.devices.length}');
 
+    // Log all discovered devices
+    if (_client.devices.isNotEmpty) {
+      print('[FBP-Linux] Debug: Discovered devices:');
+      for (final device in _client.devices) {
+        print(
+            '[FBP-Linux] Debug: - ${device.address} (${device.name}), RSSI: ${device.rssi}, Connected: ${device.connected}');
+      }
+    }
+
+    await _client.adapters.first.stopDiscovery();
     return true;
   }
 
@@ -1274,12 +1520,53 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
 
   Future<void> _initFlutterBluePlus() async {
     if (_initialized) {
+      print('[FBP-Linux] Debug: BlueZ client already initialized, skipping');
       return;
     }
 
-    _initialized = true;
+    print('[FBP-Linux] Debug: Initializing BlueZ client connection');
 
-    await _client.connect();
+    try {
+      print('[FBP-Linux] Debug: Connecting to BlueZ D-Bus service');
+      await _client.connect();
+      print('[FBP-Linux] Debug: Connected to BlueZ successfully');
+
+      // Check adapter state
+      if (_client.adapters.isEmpty) {
+        print('[FBP-Linux] Debug: WARNING - No Bluetooth adapters found');
+      } else {
+        final adapter = _client.adapters.first;
+        print(
+            '[FBP-Linux] Debug: Found adapter: ${adapter.address}, powered: ${adapter.powered}');
+
+        // Try to power on the adapter if it's not already on
+        if (!adapter.powered) {
+          print(
+              '[FBP-Linux] Debug: Adapter not powered, attempting to power on');
+          try {
+            await adapter.setPowered(true);
+            print('[FBP-Linux] Debug: Adapter powered on successfully');
+          } catch (e) {
+            print('[FBP-Linux] Debug: Failed to power on adapter: $e');
+          }
+        }
+      }
+
+      // Debug existing devices
+      print(
+          '[FBP-Linux] Debug: Devices known to BlueZ at initialization: ${_client.devices.length}');
+      for (final device in _client.devices) {
+        print(
+            '[FBP-Linux] Debug: Device ${device.address} (${device.name}), connected: ${device.connected}');
+      }
+
+      _initialized = true;
+      print('[FBP-Linux] Debug: BlueZ client initialization complete');
+    } catch (e) {
+      print('[FBP-Linux] Debug: Error initializing BlueZ client: $e');
+      print('[FBP-Linux] Debug: Stack trace: ${StackTrace.current}');
+      rethrow;
+    }
 
     _client.devicesChanged.switchMap(
       (devices) {
@@ -1287,6 +1574,9 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
           print(
             '[FBP-Linux] devices changed ${devices.map((device) => device.remoteId).toList()}',
           );
+        } else {
+          print(
+              '[FBP-Linux] Debug: Device list changed, count: ${devices.length}');
         }
 
         return MergeStream(
@@ -1298,6 +1588,9 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
                     print(
                       '[FBP-Linux] device ${device.remoteId} properties changed $properties',
                     );
+                  } else {
+                    print(
+                        '[FBP-Linux] Debug: Device ${device.address} properties changed');
                   }
 
                   final streams = <Stream<void>>[];
@@ -1311,6 +1604,9 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
                               print(
                                 '[FBP-Linux] device ${device.remoteId} service ${service.uuid} characteristic ${characteristic.uuid} properties changed $properties',
                               );
+                            } else {
+                              print(
+                                  '[FBP-Linux] Debug: Characteristic property changed for ${characteristic.uuid}');
                             }
                           },
                         ),
@@ -1325,15 +1621,25 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
           ),
         );
       },
-    ).listen(null);
+    ).listen((event) {
+      print('[FBP-Linux] Debug: Received BLE event');
+    }, onError: (e) {
+      print('[FBP-Linux] Debug: Error in BLE event stream: $e');
+    });
   }
 }
 
 extension on BlueZClient {
   Stream<List<BlueZAdapter>> get adaptersChanged {
     return MergeStream([
-      adapterAdded,
-      adapterRemoved,
+      adapterAdded.map((adapter) {
+        print('[FBP-Linux] Debug: Bluetooth adapter added: ${adapter.name}');
+        return adapter;
+      }),
+      adapterRemoved.map((adapter) {
+        print('[FBP-Linux] Debug: Bluetooth adapter removed: ${adapter.name}');
+        return adapter;
+      }),
     ]).map(
       (adapter) {
         return adapters;
@@ -1343,8 +1649,25 @@ extension on BlueZClient {
 
   Stream<List<BlueZDevice>> get devicesChanged {
     return MergeStream([
-      deviceAdded,
-      deviceRemoved,
+      deviceAdded.map((device) {
+        print(
+            '[FBP-Linux] Debug: BlueZ device added: ${device.address} (${device.name})');
+
+        // Special logging for target devices
+        if (device.name.toLowerCase().contains('micro') ||
+            device.name.toLowerCase().contains('node') ||
+            device.name.toLowerCase().contains('glamox')) {
+          print(
+              '[FBP-Linux] Debug: *** POTENTIAL TARGET DEVICE DETECTED: ${device.address} (${device.name}) ***');
+        }
+
+        return device;
+      }),
+      deviceRemoved.map((device) {
+        print(
+            '[FBP-Linux] Debug: BlueZ device removed: ${device.address} (${device.name})');
+        return device;
+      }),
     ]).map(
       (device) {
         return devices;
