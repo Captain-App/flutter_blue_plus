@@ -1,0 +1,14 @@
+# melos_managed_dependency_overrides: flutter_blue_plus,flutter_blue_plus_android,flutter_blue_plus_darwin,flutter_blue_plus_linux,flutter_blue_plus_platform_interface,flutter_blue_plus_web
+dependency_overrides:
+  flutter_blue_plus:
+    path: ..
+  flutter_blue_plus_android:
+    path: ../../flutter_blue_plus_android
+  flutter_blue_plus_darwin:
+    path: ../../flutter_blue_plus_darwin
+  flutter_blue_plus_linux:
+    path: ../../flutter_blue_plus_linux
+  flutter_blue_plus_platform_interface:
+    path: ../../flutter_blue_plus_platform_interface
+  flutter_blue_plus_web:
+    path: ../../flutter_blue_plus_web
