@@ -276,51 +276,65 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
   Future<bool> connect(
     BmConnectRequest request,
   ) async {
-    await _initFlutterBluePlus();
-
     try {
-      print('[FBP-Linux] Connecting to device: ${request.remoteId}');
+      await _initFlutterBluePlus();
 
-      final device = _client.devices.singleWhere((device) {
-        return device.remoteId == request.remoteId;
-      }, orElse: () {
-        // Device not found in BlueZ list, try to connect using direct BlueZ command
-        print(
-            '[FBP-Linux] Device not found in BlueZ device list. Trying direct BlueZ connect.');
-        throw Exception('Device not found in BlueZ device list');
-      });
+      print('[FBP-Linux] Attempting to connect to device: ${request.remoteId}');
 
-      // Multiple connect attempts with exponential backoff
-      int attempts = 0;
-      const maxAttempts = 3;
+      // First handle the case where remoteId might be just the raw MAC address
+      String deviceAddress = request.remoteId.toString();
+      BlueZDevice? targetDevice;
 
-      while (attempts < maxAttempts) {
+      // Try to find the device with max retry attempts
+      int maxRetries = 3;
+      for (int attempt = 0; attempt < maxRetries; attempt++) {
         try {
-          print('[FBP-Linux] Connect attempt ${attempts + 1}/${maxAttempts}');
-          await device.connect();
-          print('[FBP-Linux] Successfully connected to ${request.remoteId}');
+          targetDevice = _client.devices.singleWhere(
+            (device) =>
+                device.remoteId == request.remoteId ||
+                device.address.toLowerCase() == deviceAddress.toLowerCase(),
+          );
 
-          // Force service discovery to ensure we have all services
-          await _refreshDeviceServices(device);
-
-          return true;
-        } catch (e) {
-          attempts++;
-          print('[FBP-Linux] Connection attempt $attempts failed: $e');
-
-          if (attempts >= maxAttempts) {
-            print('[FBP-Linux] Maximum connection attempts reached');
-            rethrow;
+          if (targetDevice != null) {
+            print('[FBP-Linux] Found device, attempting connection');
+            break;
           }
-
-          // Exponential backoff between retries
-          final delay = Duration(milliseconds: 200 * (1 << attempts));
-          print('[FBP-Linux] Retrying in ${delay.inMilliseconds}ms');
-          await Future.delayed(delay);
+        } catch (e) {
+          // If device not found and we're not on final attempt, scan again
+          if (attempt < maxRetries - 1) {
+            print(
+                '[FBP-Linux] Device not found on attempt ${attempt + 1}, rescanning...');
+            await _client.adapters.first.startDiscovery();
+            await Future.delayed(const Duration(seconds: 2));
+            await _client.adapters.first.stopDiscovery();
+          }
         }
       }
 
-      return false;
+      // If we couldn't find the device, try fallback methods
+      if (targetDevice == null) {
+        print('[FBP-Linux] Device not found in BlueZ, trying fallbacks');
+        throw Exception('Device not found in BlueZ');
+      }
+
+      // Now connect to the device
+      await targetDevice.connect();
+
+      // Wait for a moment to allow services to be discovered
+      await Future.delayed(Duration(seconds: 1));
+
+      // Verify that the device is connected
+      if (targetDevice.connected) {
+        print('[FBP-Linux] Connection successful');
+
+        // Try to refresh device services to ensure they're available
+        await _refreshDeviceServices(targetDevice);
+
+        return true;
+      } else {
+        print('[FBP-Linux] Connection failed');
+        return false;
+      }
     } catch (e) {
       print('[FBP-Linux] Error connecting: $e');
 
@@ -1342,5 +1356,31 @@ extension on BlueZClient {
 extension on BlueZDevice {
   DeviceIdentifier get remoteId {
     return DeviceIdentifier(address);
+  }
+}
+
+// Extension to help with direct connection by address
+extension DeviceIdentifierHelpers on DeviceIdentifier {
+  // Get the raw MAC address from the DeviceIdentifier
+  String get rawAddress => id;
+
+  // Checks if this is a valid Bluetooth MAC address
+  bool get isValidBluetoothAddress {
+    // Check if it matches the pattern XX:XX:XX:XX:XX:XX
+    final regex =
+        RegExp(r'^([0-9A-F]{2}:){5}[0-9A-F]{2}$', caseSensitive: false);
+    return regex.hasMatch(id);
+  }
+}
+
+// Additional helper to find a BlueZDevice by raw MAC address
+extension BlueZClientHelpers on BlueZClient {
+  BlueZDevice? findDeviceByAddress(String address) {
+    try {
+      return devices.firstWhere(
+          (device) => device.address.toLowerCase() == address.toLowerCase());
+    } catch (e) {
+      return null;
+    }
   }
 }
