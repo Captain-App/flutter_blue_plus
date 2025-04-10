@@ -5,6 +5,8 @@ import 'package:bluez/bluez.dart';
 import 'package:flutter_blue_plus_platform_interface/flutter_blue_plus_platform_interface.dart';
 import 'package:rxdart/rxdart.dart';
 
+import 'raspberry_pi_improvements.dart';
+
 final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
   final _client = BlueZClient();
 
@@ -438,26 +440,33 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
     } catch (e) {
       print('[FBP-Linux] Error connecting: $e');
 
-      // Try system command as fallback for Raspberry Pi
-      try {
-        print('[FBP-Linux] Attempting fallback connection using bluetoothctl');
-        print(
-            '[FBP-Linux] Debug: Using address: ${request.remoteId.toString()}');
+      // Check if we're running on a Raspberry Pi for enhanced fallback
+      final isRaspberryPi = await RaspberryPiBlueZHelper.isRaspberryPi();
 
-        final result = await Process.run(
-            'bluetoothctl', ['connect', request.remoteId.toString()]);
-        final success = result.exitCode == 0 &&
-            !result.stdout.toString().contains('Failed to connect');
-
+      if (isRaspberryPi) {
         print(
-            '[FBP-Linux] Debug: Bluetoothctl result - exit code: ${result.exitCode}');
-        print('[FBP-Linux] Debug: Bluetoothctl output: ${result.stdout}');
-        if (result.stderr.toString().isNotEmpty) {
-          print('[FBP-Linux] Debug: Bluetoothctl error: ${result.stderr}');
+            '[FBP-Linux] Detected Raspberry Pi environment, using optimized connection approach');
+
+        // Check D-Bus configuration and start a session if needed
+        final dbusConfigured =
+            await RaspberryPiBlueZHelper.checkDBusConfiguration();
+        if (!dbusConfigured) {
+          print(
+              '[FBP-Linux] D-Bus session not properly configured, attempting to start one');
+          await RaspberryPiBlueZHelper.startDBusSession();
         }
 
+        // Reset the adapter to ensure it's in a clean state
+        await RaspberryPiBlueZHelper.resetAdapter();
+
+        // Use the enhanced connection method with retries and extended timeout
+        final success = await RaspberryPiBlueZHelper.connectWithBluetoothtcl(
+            request.remoteId.toString(),
+            retries: 3,
+            timeout: 15);
+
         if (success) {
-          print('[FBP-Linux] Fallback connection successful');
+          print('[FBP-Linux] Raspberry Pi optimized connection successful');
 
           // Wait a moment for BlueZ to register the connection
           await Future.delayed(Duration(seconds: 2));
@@ -467,12 +476,47 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
 
           return true;
         } else {
-          print('[FBP-Linux] Fallback connection failed: ${result.stderr}');
+          print('[FBP-Linux] Raspberry Pi optimized connection failed');
           return false;
         }
-      } catch (fallbackError) {
-        print('[FBP-Linux] Fallback connection error: $fallbackError');
-        return false;
+      } else {
+        // Standard fallback for non-Raspberry Pi systems
+        try {
+          print(
+              '[FBP-Linux] Attempting fallback connection using bluetoothctl');
+          print(
+              '[FBP-Linux] Debug: Using address: ${request.remoteId.toString()}');
+
+          final result = await Process.run(
+              'bluetoothctl', ['connect', request.remoteId.toString()]);
+          final success = result.exitCode == 0 &&
+              !result.stdout.toString().contains('Failed to connect');
+
+          print(
+              '[FBP-Linux] Debug: Bluetoothctl result - exit code: ${result.exitCode}');
+          print('[FBP-Linux] Debug: Bluetoothctl output: ${result.stdout}');
+          if (result.stderr.toString().isNotEmpty) {
+            print('[FBP-Linux] Debug: Bluetoothctl error: ${result.stderr}');
+          }
+
+          if (success) {
+            print('[FBP-Linux] Fallback connection successful');
+
+            // Wait a moment for BlueZ to register the connection
+            await Future.delayed(Duration(seconds: 2));
+
+            // Force client refresh to pick up the new connection
+            await _refreshClient();
+
+            return true;
+          } else {
+            print('[FBP-Linux] Fallback connection failed: ${result.stderr}');
+            return false;
+          }
+        } catch (fallbackError) {
+          print('[FBP-Linux] Fallback connection error: $fallbackError');
+          return false;
+        }
       }
     }
   }
@@ -757,72 +801,151 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
           '[FBP-Linux] Attempting to discover services using system commands');
       print('[FBP-Linux] Debug: Device ID: ${request.remoteId}');
 
-      // First try with bluetoothctl to see if we can connect
-      print('[FBP-Linux] Debug: Attempting to connect with bluetoothctl first');
-      final connectResult = await Process.run(
-          'bluetoothctl', ['connect', request.remoteId.toString()]);
-      print(
-          '[FBP-Linux] Debug: Bluetoothctl connect result: ${connectResult.exitCode}');
-      print('[FBP-Linux] Debug: Bluetoothctl output: ${connectResult.stdout}');
-      if (connectResult.stderr.toString().isNotEmpty) {
+      // Check if we're running on a Raspberry Pi
+      final isRaspberryPi = await RaspberryPiBlueZHelper.isRaspberryPi();
+      if (isRaspberryPi) {
         print(
-            '[FBP-Linux] Debug: Bluetoothctl stderr: ${connectResult.stderr}');
-      }
+            '[FBP-Linux] Detected Raspberry Pi environment, using optimized approach');
 
-      // Use gatttool for service discovery
-      print('[FBP-Linux] Debug: Running gatttool primary service discovery');
-      final result = await Process.run(
-          'gatttool', ['-b', request.remoteId.toString(), '--primary']);
+        // First try to connect with bluetoothctl using the enhanced method
+        await RaspberryPiBlueZHelper.connectWithBluetoothtcl(
+            request.remoteId.toString(),
+            retries: 3,
+            timeout: 15);
 
-      if (result.exitCode != 0) {
-        print('[FBP-Linux] gatttool command failed: ${result.stderr}');
-        print('[FBP-Linux] Debug: Exit code: ${result.exitCode}');
+        // Use the enhanced service discovery method
+        final services =
+            await RaspberryPiBlueZHelper.discoverServicesWithGatttool(
+                request.remoteId.toString());
 
-        // Try alternate approach with timeout
         print(
-            '[FBP-Linux] Debug: Trying alternative service discovery approach');
-        final altResult = await Process.run('sh', [
-          '-c',
-          'timeout 5 gatttool -b ${request.remoteId.toString()} --primary'
-        ]);
-        print(
-            '[FBP-Linux] Debug: Alternative approach exit code: ${altResult.exitCode}');
-        print('[FBP-Linux] Debug: Alternative output: ${altResult.stdout}');
+            '[FBP-Linux] Found ${services.length} services using Raspberry Pi helper');
 
-        if (altResult.stderr.toString().isNotEmpty) {
-          print('[FBP-Linux] Debug: Alternative stderr: ${altResult.stderr}');
+        // Convert the discovered services to BmBluetoothService objects
+        final bmServices = <BmBluetoothService>[];
+
+        for (final service in services) {
+          final uuid = service['uuid'] as String?;
+          if (uuid != null) {
+            try {
+              // Try to create a Guid from the UUID string
+              final serviceUuid = Guid(uuid);
+
+              // Create a service object
+              bmServices.add(
+                BmBluetoothService(
+                  serviceUuid: serviceUuid,
+                  remoteId: request.remoteId,
+                  characteristics: [], // We don't have characteristic info from gatttool
+                  primaryServiceUuid: null,
+                ),
+              );
+            } catch (e) {
+              print('[FBP-Linux] Error creating service from UUID $uuid: $e');
+            }
+          }
         }
 
-        // If still failing, return false
-        if (altResult.exitCode != 0) {
-          return false;
-        }
-      }
-
-      // Parse services
-      final output = result.stdout.toString();
-      print('[FBP-Linux] Debug: Gatttool raw output: $output');
-
-      final serviceLines =
-          output.split('\n').where((line) => line.contains('uuid:')).toList();
-
-      print('[FBP-Linux] Found ${serviceLines.length} services using gatttool');
-      for (final line in serviceLines) {
-        print('[FBP-Linux] Debug: Service: $line');
-      }
-
-      // Create a fake services list
-      final services = <BmBluetoothService>[];
-
-      // Handle the case where no services were found
-      if (serviceLines.isEmpty) {
-        print('[FBP-Linux] No services found with gatttool');
-
-        // Create a result with no services
+        // Send the result with the discovered services
         _onDiscoveredServicesController.add(
           BmDiscoverServicesResult(
             remoteId: request.remoteId,
-            services: [],
+            services: bmServices,
+            success: true,
+            errorCode: 0,
+            errorString: '',
+          ),
+        );
+
+        return true;
+      } else {
+        // Fall back to the original implementation for non-Raspberry Pi systems
+        // First try with bluetoothctl to see if we can connect
+        print(
+            '[FBP-Linux] Debug: Attempting to connect with bluetoothctl first');
+        final connectResult = await Process.run(
+            'bluetoothctl', ['connect', request.remoteId.toString()]);
+        print(
+            '[FBP-Linux] Debug: Bluetoothctl connect result: ${connectResult.exitCode}');
+        print(
+            '[FBP-Linux] Debug: Bluetoothctl output: ${connectResult.stdout}');
+        if (connectResult.stderr.toString().isNotEmpty) {
+          print(
+              '[FBP-Linux] Debug: Bluetoothctl stderr: ${connectResult.stderr}');
+        }
+
+        // Use gatttool for service discovery
+        print('[FBP-Linux] Debug: Running gatttool primary service discovery');
+        final result = await Process.run(
+            'gatttool', ['-b', request.remoteId.toString(), '--primary']);
+
+        if (result.exitCode != 0) {
+          print('[FBP-Linux] gatttool command failed: ${result.stderr}');
+          print('[FBP-Linux] Debug: Exit code: ${result.exitCode}');
+
+          // Try alternate approach with timeout
+          print(
+              '[FBP-Linux] Debug: Trying alternative service discovery approach');
+          final altResult = await Process.run('sh', [
+            '-c',
+            'timeout 5 gatttool -b ${request.remoteId.toString()} --primary'
+          ]);
+          print(
+              '[FBP-Linux] Debug: Alternative approach exit code: ${altResult.exitCode}');
+          print('[FBP-Linux] Debug: Alternative output: ${altResult.stdout}');
+
+          if (altResult.stderr.toString().isNotEmpty) {
+            print('[FBP-Linux] Debug: Alternative stderr: ${altResult.stderr}');
+          }
+
+          // If still failing, return false
+          if (altResult.exitCode != 0) {
+            return false;
+          }
+        }
+
+        // Parse services
+        final output = result.stdout.toString();
+        print('[FBP-Linux] Debug: Gatttool raw output: $output');
+
+        final serviceLines =
+            output.split('\n').where((line) => line.contains('uuid:')).toList();
+
+        print(
+            '[FBP-Linux] Found ${serviceLines.length} services using gatttool');
+        for (final line in serviceLines) {
+          print('[FBP-Linux] Debug: Service: $line');
+        }
+
+        // Create a fake services list
+        final services = <BmBluetoothService>[];
+
+        // Handle the case where no services were found
+        if (serviceLines.isEmpty) {
+          print('[FBP-Linux] No services found with gatttool');
+
+          // Create a result with no services
+          _onDiscoveredServicesController.add(
+            BmDiscoverServicesResult(
+              remoteId: request.remoteId,
+              services: [],
+              success: true,
+              errorCode: 0,
+              errorString: '',
+            ),
+          );
+
+          return true;
+        }
+
+        // TODO: Parse service UUIDs and attempt to create service objects
+        // For now, just sending an empty list as we need more complex parsing
+
+        // Send the result with the discovered services
+        _onDiscoveredServicesController.add(
+          BmDiscoverServicesResult(
+            remoteId: request.remoteId,
+            services: services,
             success: true,
             errorCode: 0,
             errorString: '',
@@ -831,22 +954,6 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
 
         return true;
       }
-
-      // TODO: Parse service UUIDs and attempt to create service objects
-      // For now, just sending an empty list as we need more complex parsing
-
-      // Send the result with the discovered services
-      _onDiscoveredServicesController.add(
-        BmDiscoverServicesResult(
-          remoteId: request.remoteId,
-          services: services,
-          success: true,
-          errorCode: 0,
-          errorString: '',
-        ),
-      );
-
-      return true;
     } catch (e) {
       print('[FBP-Linux] Error in system command service discovery: $e');
       print('[FBP-Linux] Debug: Stack trace: ${StackTrace.current}');
