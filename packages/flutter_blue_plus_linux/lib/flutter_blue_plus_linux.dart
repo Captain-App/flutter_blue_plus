@@ -328,8 +328,8 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
       try {
         print('[FBP-Linux] Attempting fallback connection using bluetoothctl');
 
-        final result =
-            await Process.run('bluetoothctl', ['connect', request.remoteId]);
+        final result = await Process.run(
+            'bluetoothctl', ['connect', request.remoteId.toString()]);
         final success = result.exitCode == 0 &&
             !result.stdout.toString().contains('Failed to connect');
 
@@ -577,8 +577,8 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
           '[FBP-Linux] Attempting to discover services using system commands');
 
       // Use gatttool for service discovery
-      final result =
-          await Process.run('gatttool', ['-b', request.remoteId, '--primary']);
+      final result = await Process.run(
+          'gatttool', ['-b', request.remoteId.toString(), '--primary']);
 
       if (result.exitCode != 0) {
         print('[FBP-Linux] gatttool command failed: ${result.stderr}');
@@ -1025,7 +1025,7 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
         // Get the handle using gatttool (this is a simplification - in practice you'd need to parse the handle)
         final cmdResult = await Process.run('gatttool', [
           '-b',
-          request.remoteId,
+          request.remoteId.toString(),
           '--char-read',
           '--uuid=$characteristicUuidStr'
         ]);
