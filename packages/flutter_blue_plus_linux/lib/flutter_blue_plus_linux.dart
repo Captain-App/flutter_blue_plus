@@ -24,6 +24,7 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
   final _onDiscoveredServicesController =
       StreamController<BmDiscoverServicesResult>.broadcast();
   final _onReadRssiController = StreamController<BmReadRssiResult>.broadcast();
+  final _onTurnOnResponseController = StreamController<BmTurnOnResponse>.broadcast();
 
   @override
   Stream<BmBluetoothAdapterState> get onAdapterStateChanged {
@@ -286,6 +287,11 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
         );
       },
     );
+  }
+
+  @override
+  Stream<BmTurnOnResponse> get onTurnOnResponse {
+    return _onTurnOnResponseController.stream;
   }
 
   @override
@@ -1444,9 +1450,13 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
   ) async {
     await _initFlutterBluePlus();
 
-    await _client.adapters.first.setPowered(false);
+    if (_client.adapters.first.powered == true) {
+      await _client.adapters.first.setPowered(false);
 
-    return true;
+      return true;
+    }
+
+    return false;
   }
 
   @override
@@ -1455,9 +1465,19 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
   ) async {
     await _initFlutterBluePlus();
 
-    await _client.adapters.first.setPowered(true);
+    if (_client.adapters.first.powered == false) {
+      await _client.adapters.first.setPowered(true);
 
-    return true;
+      _onTurnOnResponseController.add(
+        BmTurnOnResponse(
+          userAccepted: true,
+        ),
+      );
+
+      return true;
+    }
+
+    return false;
   }
 
   @override
