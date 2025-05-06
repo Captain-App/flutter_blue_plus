@@ -24,7 +24,8 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
   final _onDiscoveredServicesController =
       StreamController<BmDiscoverServicesResult>.broadcast();
   final _onReadRssiController = StreamController<BmReadRssiResult>.broadcast();
-  final _onTurnOnResponseController = StreamController<BmTurnOnResponse>.broadcast();
+  final _onTurnOnResponseController =
+      StreamController<BmTurnOnResponse>.broadcast();
 
   @override
   Stream<BmBluetoothAdapterState> get onAdapterStateChanged {
@@ -338,11 +339,9 @@ final class FlutterBluePlusLinux extends FlutterBluePlusPlatform {
             },
           );
 
-          if (targetDevice != null) {
-            print(
-                '[FBP-Linux] Found device, attempting connection to ${targetDevice.address} (${targetDevice.name})');
-            break;
-          }
+          print(
+              '[FBP-Linux] Found device, attempting connection to ${targetDevice.address} (${targetDevice.name})');
+          break;
         } catch (e) {
           // If device not found and we're not on final attempt, scan again
           print(
